@@ -5,13 +5,15 @@ import {
   Shield, Lock, Rocket, Home, CheckCircle, Clock, AlertCircle,
   PauseCircle, MinusCircle, Plus, ArrowLeft, Activity, ChevronRight,
   TrendingUp, Trash2, User, Building2, FolderOpen, StickyNote, Info, X, Edit3,
-  ArrowUp, ArrowDown, MessageSquare
+  ArrowUp, ArrowDown, MessageSquare, LayoutKanban
 } from "lucide-react";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import QuadroGeral from "@/components/QuadroGeral";
+import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
 function moduloOf(areaId) {
   if (areaId === "lgpd") return "LGPD";
@@ -476,15 +478,34 @@ function Dashboard({ data, setData, nav }) {
 function AreaView({ areaId, data, setData, nav }) {
   const area = data.areas.find(a => a.id === areaId);
   const [newName, setNewName] = useState("");
+  const [newClienteResp, setNewClienteResp] = useState([]);
+  const me = useCurrentUser();
+  const profiles = useProfiles();
+  const currentProfile = me ? profiles.find(p => p.id === me.id) : null;
   const AIcon = areaId === "compliance" ? Shield : Lock;
 
   const { total, done, pct } = areaProg(area);
 
   function addCliente() {
     if (!newName.trim()) return;
-    const cliente = { id: `cli${uid()}`, name: newName.trim(), planos: buildTemplatePlanos(areaId), canalEtica: false };
+    const cliente = { id: `cli${uid()}`, name: newName.trim(), responsaveis: newClienteResp, planos: buildTemplatePlanos(areaId), canalEtica: false };
     setData(d => ({ ...d, areas: d.areas.map(a => a.id !== areaId ? a : { ...a, clientes: [...a.clientes, cliente] }) }));
+    if (newClienteResp.length > 0 && me) {
+      emitAtribuicao({
+        newIds: newClienteResp, oldIds: [],
+        ctx: {
+          cliente_id: cliente.id, cliente_nome: cliente.name,
+          modulo: moduloOf(areaId),
+          plano_id: '', plano_nome: '',
+          item_id: null, item_nome: null,
+          autor_id: me.id,
+          autor_nome: currentProfile?.display_name || me.email || "sistema",
+          trecho: "foi adicionado como responsável",
+        },
+      });
+    }
     setNewName("");
+    setNewClienteResp([]);
   }
   function removeCliente(cId) {
     if (!confirm("Remover este cliente e todos os seus planos?")) return;
@@ -549,11 +570,12 @@ function AreaView({ areaId, data, setData, nav }) {
       </div>
 
       {/* Add client */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <input value={newName} onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addCliente()}
           placeholder="Nome do cliente..."
-          style={{ ...inp, flex: 1, fontSize: 13, padding: "9px 14px" }} />
+          style={{ ...inp, flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px" }} />
+        <ResponsaveisPicker value={newClienteResp} onChange={setNewClienteResp} label="Responsáveis" />
         <button onClick={addCliente} style={{
           background: area.color, border: "none", borderRadius: 8, padding: "9px 16px",
           color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
@@ -642,12 +664,14 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
   const area = data.areas.find(a => a.id === areaId);
   const cliente = area.clientes.find(c => c.id === clienteId);
   const [newPlanoName, setNewPlanoName] = useState("");
+  const [newPlanoResp, setNewPlanoResp] = useState([]);
   const [openNotasId, setOpenNotasId] = useState(null);
   const [notaDraft, setNotaDraft] = useState({});
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const me = useCurrentUser();
   const profiles = useProfiles();
+  const currentProfile = me ? profiles.find(p => p.id === me.id) : null;
 
   function reorderPlanos(sourceId, targetId) {
     if (!sourceId || !targetId || sourceId === targetId) return;
@@ -664,9 +688,24 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
 
   function addPlano() {
     if (!newPlanoName.trim()) return;
-    const plano = { id: `pl${uid()}`, name: newPlanoName.trim(), responsavel: "", responsaveis: [], notas: [], items: [] };
+    const plano = { id: `pl${uid()}`, name: newPlanoName.trim(), responsavel: "", responsaveis: newPlanoResp, notas: [], items: [] };
     updatePlanos(planos => sortPlanosByCompletion([...planos, plano]));
+    if (newPlanoResp.length > 0 && me) {
+      emitAtribuicao({
+        newIds: newPlanoResp, oldIds: [],
+        ctx: {
+          cliente_id: cliente.id, cliente_nome: cliente.name,
+          modulo: moduloOf(areaId),
+          plano_id: plano.id, plano_nome: plano.name,
+          item_id: null, item_nome: null,
+          autor_id: me.id,
+          autor_nome: currentProfile?.display_name || me.email || "sistema",
+          trecho: "foi adicionado como responsável",
+        },
+      });
+    }
     setNewPlanoName("");
+    setNewPlanoResp([]);
   }
   function removePlano(planoId) {
     if (!confirm("Remover este plano e todos os seus itens?")) return;
@@ -751,11 +790,12 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
       </div>
 
       {/* Add plan */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <input value={newPlanoName} onChange={e => setNewPlanoName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addPlano()}
           placeholder="Nome do plano (ex: Plano de Integridade)..."
-          style={{ ...inp, flex: 1, fontSize: 13, padding: "9px 14px" }} />
+          style={{ ...inp, flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px" }} />
+        <ResponsaveisPicker value={newPlanoResp} onChange={setNewPlanoResp} label="Responsáveis" />
         <button onClick={addPlano} style={{
           background: area.color, border: "none", borderRadius: 8, padding: "9px 16px",
           color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
@@ -808,7 +848,24 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                       <span style={{ color: "#64748B", fontSize: 12 }}>Responsáveis:</span>
                       <ResponsaveisPicker
                         value={plano.responsaveis || []}
-                        onChange={(ids) => setPlanoResponsaveis(plano.id, ids)}
+                        onChange={(ids) => {
+                          const old = plano.responsaveis || [];
+                          setPlanoResponsaveis(plano.id, ids);
+                          if (me) {
+                            emitAtribuicao({
+                              newIds: ids, oldIds: old,
+                              ctx: {
+                                cliente_id: cliente.id, cliente_nome: cliente.name,
+                                modulo: moduloOf(areaId),
+                                plano_id: plano.id, plano_nome: plano.name,
+                                item_id: null, item_nome: null,
+                                autor_id: me.id,
+                                autor_nome: currentProfile?.display_name || me.email || "sistema",
+                                trecho: ids.length > old.length ? "foi adicionado como responsável" : "foi removido como responsável",
+                              },
+                            });
+                          }
+                        }}
                       />
                       <button onClick={() => setOpenNotasId(isNotasOpen ? null : plano.id)} style={{
                         display: "flex", alignItems: "center", gap: 5, background: isNotasOpen ? "#FEF3C7" : "#F8FAFC",
@@ -1766,11 +1823,20 @@ import { supabase } from "@/integrations/supabase/client";
 
 const ROW_ID = "main";
 
+const QUADRO_DEFAULTS = {
+  modulo: "ambos", clientes: [], planos: [], responsaveis: [], status: [], prazo: "todos",
+};
+
 export default function App() {
   const [data, setDataState] = useState(INIT);
   const [view, setView] = useState({ page: "dashboard" });
   const [loaded, setLoaded] = useState(false);
+  const [dashTab, setDashTab] = useState("painel");
+  const [quadroFilters, setQuadroFilters] = useState(QUADRO_DEFAULTS);
+  const currentUser = useCurrentUser();
   const activeId = navActiveId(view);
+
+  useDeadlineCheck(data, currentUser);
 
   const remoteRef = useRef(false);
   const saveTimer = useRef(null);
@@ -1949,13 +2015,56 @@ export default function App() {
         </aside>
 
         {/* Main content */}
-        <main style={{ marginLeft: 220, flex: 1, padding: "40px 44px", minHeight: "100vh", overflowX: "hidden" }}>
-          {view.page === "dashboard" && <Dashboard data={data} setData={setData} nav={setView} />}
-          {view.page === "area"     && <AreaView     areaId={view.areaId} data={data} setData={setData} nav={setView} />}
-          {view.page === "cliente"  && <ClienteView  areaId={view.areaId} clienteId={view.clienteId} data={data} setData={setData} nav={setView} />}
-          {view.page === "plano"    && <PlanoView     areaId={view.areaId} clienteId={view.clienteId} planoId={view.planoId} data={data} setData={setData} nav={setView} />}
-          {view.page === "produtos" && <ProdutosView  data={data} setData={setData} nav={setView} />}
-          {view.page === "produto"  && <ProdutoDetail prodId={view.prodId} data={data} setData={setData} nav={setView} />}
+        <main style={{ marginLeft: 220, flex: 1, minHeight: "100vh", overflowX: "hidden" }}>
+          {view.page === "dashboard" && (
+            <div>
+              {/* Tab bar */}
+              <div style={{
+                display: "flex", gap: 4, padding: "16px 44px 0",
+                borderBottom: "1px solid #E2E8F0", background: "#F0F5FF",
+                position: "sticky", top: 0, zIndex: 50,
+              }}>
+                <button onClick={() => setDashTab("painel")} style={{
+                  display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                  border: "none", borderBottom: dashTab === "painel" ? "2px solid #0DD3C5" : "2px solid transparent",
+                  background: "transparent", color: dashTab === "painel" ? "#0DD3C5" : "#64748B",
+                  fontSize: 13, fontWeight: dashTab === "painel" ? 700 : 500,
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                }}>
+                  <Home size={14} /> Painel
+                </button>
+                <button onClick={() => setDashTab("quadro")} style={{
+                  display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                  border: "none", borderBottom: dashTab === "quadro" ? "2px solid #0DD3C5" : "2px solid transparent",
+                  background: "transparent", color: dashTab === "quadro" ? "#0DD3C5" : "#64748B",
+                  fontSize: 13, fontWeight: dashTab === "quadro" ? 700 : 500,
+                  cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                }}>
+                  <LayoutKanban size={14} /> Quadro Geral
+                </button>
+              </div>
+              {dashTab === "painel" && (
+                <div style={{ padding: "40px 44px" }}>
+                  <Dashboard data={data} setData={setData} nav={setView} />
+                </div>
+              )}
+              {dashTab === "quadro" && (
+                <QuadroGeral
+                  filters={quadroFilters}
+                  setFilters={(next) => setQuadroFilters(prev => ({ ...prev, ...next }))}
+                />
+              )}
+            </div>
+          )}
+          {view.page !== "dashboard" && (
+            <div style={{ padding: "40px 44px" }}>
+              {view.page === "area"     && <AreaView     areaId={view.areaId} data={data} setData={setData} nav={setView} />}
+              {view.page === "cliente"  && <ClienteView  areaId={view.areaId} clienteId={view.clienteId} data={data} setData={setData} nav={setView} />}
+              {view.page === "plano"    && <PlanoView     areaId={view.areaId} clienteId={view.clienteId} planoId={view.planoId} data={data} setData={setData} nav={setView} />}
+              {view.page === "produtos" && <ProdutosView  data={data} setData={setData} nav={setView} />}
+              {view.page === "produto"  && <ProdutoDetail prodId={view.prodId} data={data} setData={setData} nav={setView} />}
+            </div>
+          )}
         </main>
       </div>
     </>

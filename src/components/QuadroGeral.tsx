@@ -7,6 +7,8 @@ import {
   type FlatCard, type KanbanStatus,
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
+import { emitMudancaStatus } from "@/lib/notifications";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 
 type Filters = {
   modulo: "LGPD" | "Compliance" | "ambos";
@@ -30,6 +32,7 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
   const { data, loaded, update } = useDashboardState();
   const profiles = useProfiles();
   const navigate = useNavigate();
+  const currentUser = useCurrentUser();
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
 
@@ -59,7 +62,26 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
 
   function moveCard(card: FlatCard, newStatus: KanbanStatus) {
     if (card.kanbanStatus === newStatus) return;
-    update((prev: any) => setItemKanbanStatus(prev, card, newStatus));
+    update((prev: any) => {
+      const next = setItemKanbanStatus(prev, card, newStatus);
+      return next;
+    });
+    emitMudancaStatus({
+      responsibleIds: card.responsaveis || [],
+      novoStatus: newStatus,
+      ctx: {
+        cliente_id: card.clienteId,
+        cliente_nome: card.clienteNome,
+        modulo: card.modulo,
+        plano_id: card.planoId,
+        plano_nome: card.planoNome,
+        item_id: card.itemId,
+        item_nome: card.itemNome,
+        autor_id: currentUser?.id || null,
+        autor_nome: currentUser?.email || "sistema",
+        trecho: `Status alterado de "${card.kanbanStatus}" para "${newStatus}"`,
+      },
+    });
   }
 
   function openCard(card: FlatCard) {

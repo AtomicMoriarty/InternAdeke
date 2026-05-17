@@ -12,12 +12,16 @@ type Props = {
 export default function ResponsaveisPicker({ value, onChange, compact, label = "Responsáveis" }: Props) {
   const profiles = useProfiles();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const ids = Array.isArray(value) ? value : [];
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
     }
     if (open) document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -70,33 +74,57 @@ export default function ResponsaveisPicker({ value, onChange, compact, label = "
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 1000,
           background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10,
-          boxShadow: "0 8px 30px rgba(0,0,0,0.12)", minWidth: 240, maxHeight: 320, overflow: "auto",
-          padding: 4,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.12)", minWidth: 240, maxHeight: 320, overflow: "hidden",
+          display: "flex", flexDirection: "column",
         }}>
+          <input
+            autoFocus
+            placeholder="Buscar por nome ou e-mail..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: "100%", padding: "7px 10px", border: "none",
+              borderBottom: "1px solid #F1F5F9", fontSize: 12,
+              outline: "none", borderRadius: "10px 10px 0 0", flexShrink: 0,
+            }}
+          />
+          <div style={{ overflow: "auto", flex: 1, padding: 4 }}>
           {profiles.length === 0 && (
             <div style={{ padding: 12, fontSize: 12, color: "#94A3B8" }}>Sem usuários cadastrados</div>
           )}
-          {profiles.map((p) => {
-            const on = ids.includes(p.id);
-            return (
-              <button key={p.id} onClick={() => toggle(p.id)} style={{
-                display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px",
-                background: on ? "#F0FDFA" : "transparent", border: "none", borderRadius: 6,
-                cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-              }}>
-                <span style={{
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  width: 26, height: 26, borderRadius: "50%", background: p.avatar_color || colorFor(p.id),
-                  color: "#fff", fontSize: 10, fontWeight: 800, flexShrink: 0,
-                }}>{initials(p.display_name)}</span>
-                <span style={{ flex: 1, fontSize: 12, color: "#0F172A", fontWeight: 600 }}>
-                  {p.display_name}
-                  <span style={{ display: "block", color: "#94A3B8", fontSize: 10, fontWeight: 500 }}>@{p.username}</span>
-                </span>
-                {on && <Check size={14} color="#0DD3C5" />}
-              </button>
+          {(() => {
+            const visibleProfiles = profiles.filter(p =>
+              !search ||
+              p.display_name.toLowerCase().includes(search.toLowerCase()) ||
+              p.email.toLowerCase().includes(search.toLowerCase()) ||
+              p.username.toLowerCase().includes(search.toLowerCase())
             );
-          })}
+            if (visibleProfiles.length === 0 && search) {
+              return <div style={{ padding: 12, fontSize: 12, color: "#94A3B8" }}>Nenhum resultado</div>;
+            }
+            return visibleProfiles.map((p) => {
+              const on = ids.includes(p.id);
+              return (
+                <button key={p.id} onClick={() => toggle(p.id)} style={{
+                  display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 10px",
+                  background: on ? "#F0FDFA" : "transparent", border: "none", borderRadius: 6,
+                  cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                }}>
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: "50%", background: p.avatar_color || colorFor(p.id),
+                    color: "#fff", fontSize: 10, fontWeight: 800, flexShrink: 0,
+                  }}>{initials(p.display_name)}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: "#0F172A", fontWeight: 600 }}>
+                    {p.display_name}
+                    <span style={{ display: "block", color: "#94A3B8", fontSize: 10, fontWeight: 500 }}>{p.email}</span>
+                  </span>
+                  {on && <Check size={14} color="#0DD3C5" />}
+                </button>
+              );
+            });
+          })()}
           {ids.length > 0 && (
             <button onClick={() => onChange([])} style={{
               display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "8px 10px",
@@ -106,6 +134,7 @@ export default function ResponsaveisPicker({ value, onChange, compact, label = "
               <X size={12} /> Limpar seleção
             </button>
           )}
+          </div>
         </div>
       )}
     </div>

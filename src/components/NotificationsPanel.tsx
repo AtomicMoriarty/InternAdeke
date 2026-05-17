@@ -149,31 +149,49 @@ function NotifRow({ n, onClick, profiles }: { n: Notification; onClick: () => vo
   const Icon = n.tipo === "mencao" ? AtSign : MessageSquare;
   const color = n.tipo === "mencao" ? "#8B5CF6" : "#0DD3C5";
   return (
-    <button onClick={onClick} style={{
+    <div style={{
       display: "flex", gap: 10, padding: "12px 14px", width: "100%",
-      background: n.lida ? "transparent" : "#F0FDFA", border: "none", borderBottom: "1px solid #F1F5F9",
-      cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+      background: n.lida ? "transparent" : "#F0FDFA", borderBottom: "1px solid #F1F5F9",
+      fontFamily: "inherit", alignItems: "flex-start",
     }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: 8, background: `${color}18`,
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}><Icon size={14} color={color} /></div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: "#0F172A", fontWeight: 700, marginBottom: 2 }}>
-          {n.tipo === "mencao" ? `${n.autor_nome || "Alguém"} mencionou você` : `Nova nota em "${n.item_nome || n.plano_nome}"`}
-        </div>
-        <div style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>
-          {n.cliente_nome} · {n.modulo} · {n.plano_nome}{n.item_nome ? ` › ${n.item_nome}` : ""}
-        </div>
-        {n.trecho && (
-          <div style={{ fontSize: 11, color: "#475569", background: "#F8FAFC", padding: "6px 8px", borderRadius: 6, borderLeft: `2px solid ${color}` }}>
-            <MentionText text={n.trecho} />
+      <button onClick={onClick} style={{
+        display: "flex", gap: 10, flex: 1, background: "none", border: "none",
+        cursor: "pointer", textAlign: "left", fontFamily: "inherit", padding: 0, alignItems: "flex-start",
+      }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 8, background: `${color}18`,
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}><Icon size={14} color={color} /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, color: "#0F172A", fontWeight: 700, marginBottom: 2 }}>
+            {n.tipo === "mencao" ? `${n.autor_nome || "Alguém"} mencionou você` : `Nova nota em "${n.item_nome || n.plano_nome}"`}
           </div>
+          <div style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>
+            {n.cliente_nome} · {n.modulo} · {n.plano_nome}{n.item_nome ? ` › ${n.item_nome}` : ""}
+          </div>
+          {n.trecho && (
+            <div style={{ fontSize: 11, color: "#475569", background: "#F8FAFC", padding: "6px 8px", borderRadius: 6, borderLeft: `2px solid ${color}` }}>
+              <MentionText text={n.trecho} />
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 4 }}>{timeAgo(n.created_at)}</div>
+        </div>
+      </button>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        {!n.lida && (
+          <>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+            <button
+              onClick={() => markRead(n.id)}
+              title="Marcar como lida"
+              style={{ background: "transparent", border: "none", cursor: "pointer", color: "#0DD3C5", padding: 4, borderRadius: 4 }}
+            >
+              <Check size={14} />
+            </button>
+          </>
         )}
-        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 4 }}>{timeAgo(n.created_at)}</div>
       </div>
-      {!n.lida && <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, marginTop: 6 }} />}
-    </button>
+    </div>
   );
 }
 
