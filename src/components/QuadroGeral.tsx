@@ -166,7 +166,7 @@ function KanbanCard({ card, profiles, onClick, onDragStart, onDragEnd }: {
   onClick: () => void; onDragStart: () => void; onDragEnd: () => void;
 }) {
   const moduloColor = MODULO_COLOR[card.modulo];
-  const resps = card.responsaveis.map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
+  const resps = (card.responsaveis || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
   const prazoState = prazoStatus(card.prazo);
 
   return (

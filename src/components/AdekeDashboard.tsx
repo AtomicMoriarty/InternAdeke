@@ -499,7 +499,7 @@ function AreaView({ areaId, data, setData, nav }) {
           plano_id: '', plano_nome: '',
           item_id: null, item_nome: null,
           autor_id: me.id,
-          autor_nome: currentProfile?.display_name || me.email || "sistema",
+          autor_nome: currentProfile?.display_name || me?.email || "sistema",
           trecho: "foi adicionado como responsável",
         },
       });
@@ -699,7 +699,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
           plano_id: plano.id, plano_nome: plano.name,
           item_id: null, item_nome: null,
           autor_id: me.id,
-          autor_nome: currentProfile?.display_name || me.email || "sistema",
+          autor_nome: currentProfile?.display_name || me?.email || "sistema",
           trecho: "foi adicionado como responsável",
         },
       });
