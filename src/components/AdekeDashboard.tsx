@@ -13,6 +13,7 @@ import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
+import ItemModal from "@/components/ItemModal";
 import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
 function moduloOf(areaId) {
@@ -995,6 +996,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   const [showForm, setShowForm] = useState(false);
   const [dragItemId, setDragItemId] = useState(null);
   const [dragOverItemId, setDragOverItemId] = useState(null);
+  const [modalItemId, setModalItemId] = useState(null);
 
   function reorderItems(sourceId, targetId) {
     if (!sourceId || !targetId || sourceId === targetId) return;
@@ -1169,7 +1171,9 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
                 display: "inline-block", textAlign: "center", whiteSpace: "nowrap"
               }}>{item.tipo}</span>
 
-              <p style={{ color: "#1E293B", fontSize: 14, fontWeight: 500, lineHeight: 1.4, textDecoration: itemDone ? "line-through" : "none" }}>{item.name}</p>
+              <button onClick={() => setModalItemId(item.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                <p style={{ color: "#1E293B", fontSize: 14, fontWeight: 500, lineHeight: 1.4, textDecoration: itemDone ? "line-through" : "none" }}>{item.name}</p>
+              </button>
 
               <ResponsaveisPicker
                 value={item.responsaveis || []}
@@ -1224,6 +1228,16 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
             );
           })}
         </div>
+      )}
+
+      {modalItemId && (
+        <ItemModal
+          areaId={areaId}
+          clienteId={clienteId}
+          planoId={planoId}
+          itemId={modalItemId}
+          onClose={() => setModalItemId(null)}
+        />
       )}
     </div>
   );

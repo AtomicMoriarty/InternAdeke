@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { Filter, X, Calendar, MessageSquare, GripVertical } from "lucide-react";
+import ItemModal from "@/components/ItemModal";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
   flattenDashboard, setItemKanbanStatus, KANBAN_COLUMNS, COLUMN_COLORS, MODULO_COLOR,
@@ -31,10 +31,10 @@ type Props = {
 export default function QuadroGeral({ filters, setFilters }: Props) {
   const { data, loaded, update } = useDashboardState();
   const profiles = useProfiles();
-  const navigate = useNavigate();
   const currentUser = useCurrentUser();
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
+  const [modalItem, setModalItem] = useState<{ areaId: string; clienteId: string; planoId: string; itemId: string } | null>(null);
 
   const allCards = useMemo(() => (data ? flattenDashboard(data) : []), [data]);
 
@@ -85,13 +85,7 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
   }
 
   function openCard(card: FlatCard) {
-    navigate({
-      to: "/",
-      search: {
-        cliente: card.clienteId, modulo: card.modulo,
-        plano: card.planoId, item: card.itemId,
-      } as any,
-    });
+    setModalItem({ areaId: card.areaId, clienteId: card.clienteId, planoId: card.planoId, itemId: card.itemId });
   }
 
   return (
@@ -156,6 +150,16 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
         <div style={{ position: "fixed", inset: 0, background: "rgba(240,245,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748B" }}>
           Carregando…
         </div>
+      )}
+
+      {modalItem && (
+        <ItemModal
+          areaId={modalItem.areaId}
+          clienteId={modalItem.clienteId}
+          planoId={modalItem.planoId}
+          itemId={modalItem.itemId}
+          onClose={() => setModalItem(null)}
+        />
       )}
     </div>
   );
