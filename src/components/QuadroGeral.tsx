@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { Filter, X, Calendar, MessageSquare, GripVertical } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
@@ -7,6 +6,9 @@ import {
   type FlatCard, type KanbanStatus,
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
+import { emitMudancaStatus } from "@/lib/notifications";
+import { useCurrentUser } from "@/lib/useCurrentUser";
+import ItemModal from "@/components/ItemModal";
 
 type Filters = {
   modulo: "LGPD" | "Compliance" | "ambos";
@@ -29,9 +31,10 @@ type Props = {
 export default function QuadroGeral({ filters, setFilters }: Props) {
   const { data, loaded, update } = useDashboardState();
   const profiles = useProfiles();
-  const navigate = useNavigate();
+  const currentUser = useCurrentUser();
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
+  const [modalItem, setModalItem] = useState<{ areaId: string; clienteId: string; planoId: string; itemId: string } | null>(null);
 
   const allCards = useMemo(() => (data ? flattenDashboard(data) : []), [data]);
 
@@ -60,15 +63,25 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
   function moveCard(card: FlatCard, newStatus: KanbanStatus) {
     if (card.kanbanStatus === newStatus) return;
     update((prev: any) => setItemKanbanStatus(prev, card, newStatus));
+    emitMudancaStatus({
+      responsibleIds: card.responsaveis || [],
+      novoStatus: newStatus,
+      ctx: {
+        cliente_id: card.clienteId, cliente_nome: card.clienteNome,
+        modulo: card.modulo,
+        plano_id: card.planoId, plano_nome: card.planoNome,
+        item_id: card.itemId, item_nome: card.itemNome,
+        autor_id: currentUser?.id || null,
+        autor_nome: currentUser?.email || "sistema",
+        trecho: `Status alterado de "${card.kanbanStatus}" para "${newStatus}"`,
+      },
+    });
   }
 
   function openCard(card: FlatCard) {
-    navigate({
-      to: "/",
-      search: {
-        cliente: card.clienteId, modulo: card.modulo,
-        plano: card.planoId, item: card.itemId,
-      } as any,
+    setModalItem({
+      areaId: card.areaId, clienteId: card.clienteId,
+      planoId: card.planoId, itemId: card.itemId,
     });
   }
 
@@ -135,6 +148,16 @@ export default function QuadroGeral({ filters, setFilters }: Props) {
           Carregando…
         </div>
       )}
+
+      {modalItem && (
+        <ItemModal
+          areaId={modalItem.areaId}
+          clienteId={modalItem.clienteId}
+          planoId={modalItem.planoId}
+          itemId={modalItem.itemId}
+          onClose={() => setModalItem(null)}
+        />
+      )}
     </div>
   );
 }
@@ -144,7 +167,7 @@ function KanbanCard({ card, profiles, onClick, onDragStart, onDragEnd }: {
   onClick: () => void; onDragStart: () => void; onDragEnd: () => void;
 }) {
   const moduloColor = MODULO_COLOR[card.modulo];
-  const resps = card.responsaveis.map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
+  const resps = (card.responsaveis || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
   const prazoState = prazoStatus(card.prazo);
 
   return (
