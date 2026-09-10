@@ -2,10 +2,10 @@
 import { useState, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import {
-  Shield, Lock, Rocket, Home, CheckCircle, Clock, AlertCircle,
+  Shield, Lock, Rocket, Home, CheckCircle, Check, Clock, AlertCircle,
   PauseCircle, MinusCircle, Plus, ArrowLeft, Activity, ChevronRight,
   TrendingUp, Trash2, User, Building2, FolderOpen, StickyNote, Info, X, Edit3,
-  ArrowUp, ArrowDown, MessageSquare, LayoutDashboard
+  ArrowUp, ArrowDown, MessageSquare, LayoutDashboard, Stamp, Scale, Handshake
 } from "lucide-react";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
@@ -15,12 +15,11 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
 import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
+import {
+  AREAS, areaById, moduloOf, DEMANDAS_POR_AREA, checklistTemplateFor,
+} from "@/lib/areas";
 
-function moduloOf(areaId) {
-  if (areaId === "lgpd") return "LGPD";
-  if (areaId === "compliance") return "Compliance";
-  return "Produtos";
-}
+const AREA_ICONS = { shield: Shield, lock: Lock, stamp: Stamp, scale: Scale, handshake: Handshake };
 function ResponsaveisAvatars({ ids }) {
   const profiles = useProfiles();
   const sel = (ids || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean);
@@ -60,18 +59,13 @@ function uid() { return `_${Math.random().toString(36).slice(2, 9)}`; }
 
 // ─── Initial Data ─────────────────────────────────────────────────────────────
 const INIT = {
-  areas: [
-    {
-      id: "compliance", name: "Compliance & Ética", color: "#0DD3C5",
-      responsavel: "",
-      clientes: [],
-    },
-    {
-      id: "lgpd", name: "LGPD & Privacidade", color: "#06C8D9",
-      responsavel: "", dpo: "",
-      clientes: [],
-    },
-  ],
+  // Uma área por quadro. A lista canônica vive em @/lib/areas.
+  areas: AREAS.map((a) => ({
+    id: a.id, name: a.name, color: a.color,
+    responsavel: "", responsaveis: [],
+    ...(a.id === "lgpd" ? { dpo: "" } : {}),
+    clientes: [],
+  })),
   produtos: [
     {
       id: "financeiro", name: "Produto Financeiro", emoji: "📊", color: "#8B5CF6",
@@ -153,6 +147,26 @@ const INIT = {
   ],
 };
 
+// Garante que o estado salvo contenha todas as áreas declaradas em @/lib/areas.
+// Necessário porque INIT só vale no primeiro carregamento — bancos já existentes
+// ficariam sem os quadros novos.
+function ensureAreas(data) {
+  if (!data || !Array.isArray(data.areas)) return data;
+  const existentes = new Set(data.areas.map(a => a.id));
+  const faltando = AREAS.filter(a => !existentes.has(a.id)).map(a => ({
+    id: a.id, name: a.name, color: a.color,
+    responsavel: "", responsaveis: [],
+    ...(a.id === "lgpd" ? { dpo: "" } : {}),
+    clientes: [],
+  }));
+  if (!faltando.length) return data;
+  // preserva a ordem declarada em AREAS
+  const porId = new Map([...data.areas, ...faltando].map(a => [a.id, a]));
+  const ordenadas = AREAS.map(a => porId.get(a.id)).filter(Boolean);
+  const extras = data.areas.filter(a => !AREAS.some(x => x.id === a.id));
+  return { ...data, areas: [...ordenadas, ...extras] };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function prog(items) {
   const total = items.length, done = items.filter(i => i.status === "Concluído").length;
@@ -186,6 +200,23 @@ const TEMPLATES = {
     { name: "Canais", items: ["Canal de Ética", "Ouvidoria"] },
     { name: "Treinamento", items: ["Treinamento", "Emissão de Certificado"] },
     { name: "Revisão Final", items: ["Repasse Programa de Integridade", "Auditoria", "Relatório de Monitoramento", "Revisão Final do Programa"] },
+  ],
+  inpi: [
+    { name: "Dados da empresa", items: ["Contato", "Dados da empresa"] },
+    { name: "Marcas em andamento", items: [] },
+    { name: "Marcas registradas", items: [] },
+    { name: "Prazos e vigências", items: [] },
+  ],
+  societario: [
+    { name: "Dados da empresa", items: ["Contato", "Dados da empresa", "Quadro societário"] },
+    { name: "Documentos societários", items: ["Contrato social vigente", "Última alteração", "Certidão simplificada"] },
+    { name: "Demandas em andamento", items: [] },
+  ],
+  comercial: [
+    { name: "Dados do cliente", items: ["Contato", "Dados da empresa"] },
+    { name: "Propostas", items: [] },
+    { name: "Contratos", items: [] },
+    { name: "Follow-up", items: [] },
   ],
 };
 function buildTemplatePlanos(areaId) {
@@ -365,7 +396,7 @@ function Dashboard({ data, setData, nav }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         {data.areas.map(area => {
           const { total: t, done: d, pct } = areaProg(area);
-          const AIcon = area.id === "compliance" ? Shield : Lock;
+          const AIcon = AREA_ICONS[areaById(area.id)?.icon] || Shield;
           return (
             <button key={area.id} onClick={() => nav({ page: "area", areaId: area.id })} style={{
               background: "#FFFFFF", border: `1px solid ${area.color}28`,
@@ -483,7 +514,7 @@ function AreaView({ areaId, data, setData, nav }) {
   const me = useCurrentUser();
   const profiles = useProfiles();
   const currentProfile = me ? profiles.find(p => p.id === me.id) : null;
-  const AIcon = areaId === "compliance" ? Shield : Lock;
+  const AIcon = AREA_ICONS[areaById(areaId)?.icon] || Shield;
 
   const { total, done, pct } = areaProg(area);
 
@@ -1024,7 +1055,22 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   }
   function addItem() {
     if (!newName.trim()) return;
-    const item = { id: `it${uid()}`, name: newName.trim(), tipo: newTipo, responsavel: newResp.trim(), responsaveis: [], status: "Não iniciado", obs: "", prazo: "" };
+    const nome = newName.trim();
+    // Automações: criador vira responsável, data de início = hoje,
+    // checklist pré-preenchida quando a demanda tem template.
+    const responsaveisIniciais = currentUser ? [currentUser.id] : [];
+    const checklist = checklistTemplateFor(nome).map(t => ({ id: `ck${uid()}`, text: t, done: false }));
+    const agora = new Date().toISOString();
+    const item = {
+      id: `it${uid()}`, name: nome, tipo: newTipo,
+      responsavel: newResp.trim(), responsaveis: responsaveisIniciais,
+      status: "Não iniciado", kanbanStatus: "A Fazer",
+      obs: "", prazo: "",
+      dataInicio: todayBR(),
+      criadoEm: agora,
+      statusChangedAt: agora,
+      checklist,
+    };
     setPlanos(planos => updateItemsAndResort(planos, planoId, items => [...items, item]));
     setNewName(""); setNewResp(""); setShowForm(false);
   }
@@ -1095,6 +1141,43 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
       ) : (
         <div style={{ background: "#FFFFFF", border: `1px solid ${area.color}30`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
           <p style={{ color: area.color, fontSize: 12, fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Novo Item</p>
+
+          {/* Demandas pré-listadas da área: um clique preenche o nome */}
+          {(DEMANDAS_POR_AREA[areaId] || []).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10, alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.6, marginRight: 2 }}>
+                Demandas
+              </span>
+              {(DEMANDAS_POR_AREA[areaId] || []).map(d => {
+                const ativo = newName === d;
+                const temChecklist = checklistTemplateFor(d).length > 0;
+                return (
+                  <button key={d} onClick={() => setNewName(d)}
+                    title={temChecklist ? `Já traz checklist com ${checklistTemplateFor(d).length} itens` : undefined}
+                    style={{
+                      padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                      background: ativo ? `${area.color}20` : "#F8FAFC",
+                      border: `1px solid ${ativo ? area.color : "#E2E8F0"}`,
+                      color: ativo ? area.color : "#64748B",
+                      cursor: "pointer", fontFamily: "inherit",
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                    }}>
+                    {d}{temChecklist && <Check size={10} />}
+                  </button>
+                );
+              })}
+              <button onClick={() => setNewName(cliente?.name || "")}
+                title="Usar o nome do cliente como nome do item"
+                style={{
+                  padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                  background: "#F1F5F9", border: "1px dashed #CBD5E1", color: "#475569",
+                  cursor: "pointer", fontFamily: "inherit",
+                }}>
+                + nome do cliente
+              </button>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select value={newTipo} onChange={e => setNewTipo(e.target.value)} style={{
               ...inp, width: 160, cursor: "pointer"
@@ -1103,10 +1186,10 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
             </select>
             <input value={newName} onChange={e => setNewName(e.target.value)}
               onKeyDown={e => e.key === "Enter" && addItem()}
-              placeholder="Nome do item..."
+              placeholder="Nome do item (ou escolha uma demanda acima)..."
               style={{ ...inp, flex: 1, minWidth: 200 }} />
             <input value={newResp} onChange={e => setNewResp(e.target.value)}
-              placeholder="Responsável..."
+              placeholder="Responsável (texto livre)..."
               style={{ ...inp, width: 180 }} />
             <button onClick={addItem} style={{
               background: area.color, border: "none", borderRadius: 8, padding: "7px 14px",
@@ -1827,10 +1910,12 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
 
 // ─── NAV Config ───────────────────────────────────────────────────────────────
 const NAV = [
-  { id: "dashboard", label: "Painel Geral",      Icon: Home,   color: "#64748B", view: { page: "dashboard" } },
-  { id: "compliance", label: "Compliance & Ética", Icon: Shield, color: "#3B82F6", view: { page: "area", areaId: "compliance" } },
-  { id: "lgpd",      label: "LGPD & Privacidade", Icon: Lock,   color: "#10B981", view: { page: "area", areaId: "lgpd" } },
-  { id: "produtos",  label: "Produtos & Soluções", Icon: Rocket, color: "#8B5CF6", view: { page: "produtos" } },
+  { id: "dashboard", label: "Painel Geral", Icon: Home, color: "#64748B", view: { page: "dashboard" } },
+  ...AREAS.map((a) => ({
+    id: a.id, label: a.name, Icon: AREA_ICONS[a.icon] || Shield,
+    color: a.color, view: { page: "area", areaId: a.id },
+  })),
+  { id: "produtos", label: "Produtos & Soluções", Icon: Rocket, color: "#8B5CF6", view: { page: "produtos" } },
 ];
 
 function navActiveId(view) {
@@ -1885,10 +1970,21 @@ export default function App() {
         .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
-        remoteRef.current = true;
-        setDataState(row.data);
-        dataRef.current = row.data;
-        lastSentJsonRef.current = JSON.stringify(row.data);
+        const reconciliado = ensureAreas(row.data);
+        const mudou = reconciliado !== row.data;
+        setDataState(reconciliado);
+        dataRef.current = reconciliado;
+        if (mudou) {
+          // áreas novas foram acrescentadas: persiste para os outros usuários
+          lastSentJsonRef.current = JSON.stringify(reconciliado);
+          await supabase
+            .from("dashboard_state")
+            .update({ data: reconciliado, updated_at: new Date().toISOString() })
+            .eq("id", ROW_ID);
+        } else {
+          remoteRef.current = true;
+          lastSentJsonRef.current = JSON.stringify(row.data);
+        }
       } else {
         await supabase.from("dashboard_state").insert({ id: ROW_ID, data: INIT });
         dataRef.current = INIT;
@@ -1957,7 +2053,7 @@ export default function App() {
   useEffect(() => {
     function handler(e) {
       const d = e.detail || {};
-      const areaId = d.modulo === "LGPD" ? "lgpd" : d.modulo === "Compliance" ? "compliance" : null;
+      const areaId = AREAS.find(a => a.modulo === d.modulo)?.id || null;
       if (!areaId || !d.cliente) return;
       if (d.plano) setView({ page: "plano", areaId, clienteId: d.cliente, planoId: d.plano });
       else setView({ page: "cliente", areaId, clienteId: d.cliente });

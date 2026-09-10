@@ -1,10 +1,12 @@
 // Flattens dashboard_state into a flat list of cards for the Quadro Geral.
 
+import { AREA_IDS, moduloOf, MODULO_COLOR as AREA_MODULO_COLOR } from "@/lib/areas";
+
 export type FlatCard = {
   clienteId: string;
   clienteNome: string;
-  areaId: string;            // "lgpd" | "compliance"
-  modulo: "LGPD" | "Compliance";
+  areaId: string;
+  modulo: string;
   planoId: string;
   planoNome: string;
   itemId: string;
@@ -14,10 +16,22 @@ export type FlatCard = {
   responsaveis: string[];
   notasCount: number;
   prazo: string;             // ISO date or ""
+  dataInicio: string;        // DD/MM/AAAA ou ""
+  diasNoStatus: number | null; // dias desde a última mudança de status
   progresso: number;         // 0-100
   subtotal: number;
   subdone: number;
 };
+
+// Dias desde um timestamp ISO. null quando não há registro.
+export function diasDesde(iso?: string | null): number | null {
+  if (!iso) return null;
+  const t = new Date(iso);
+  if (isNaN(t.getTime())) return null;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  t.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((now.getTime() - t.getTime()) / 86400000));
+}
 
 export const KANBAN_COLUMNS = [
   "A Fazer",
@@ -41,10 +55,7 @@ export const COLUMN_COLORS: Record<KanbanStatus, string> = {
   "Suspenso": "#94A3B8",
 };
 
-export const MODULO_COLOR: Record<"LGPD" | "Compliance", string> = {
-  LGPD: "#EF4444",
-  Compliance: "#8B5CF6",
-};
+export const MODULO_COLOR: Record<string, string> = AREA_MODULO_COLOR;
 
 function deriveKanbanStatus(item: any): KanbanStatus {
   if (item.kanbanStatus && (KANBAN_COLUMNS as readonly string[]).includes(item.kanbanStatus)) {
@@ -61,8 +72,8 @@ export function flattenDashboard(data: any): FlatCard[] {
   if (!data?.areas) return [];
   const cards: FlatCard[] = [];
   for (const area of data.areas) {
-    if (area.id !== "lgpd" && area.id !== "compliance") continue;
-    const modulo: "LGPD" | "Compliance" = area.id === "lgpd" ? "LGPD" : "Compliance";
+    if (!AREA_IDS.includes(area.id)) continue;
+    const modulo = moduloOf(area.id);
     for (const cliente of area.clientes || []) {
       for (const plano of cliente.planos || []) {
         for (const item of plano.items || []) {
@@ -86,6 +97,8 @@ export function flattenDashboard(data: any): FlatCard[] {
             responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
             notasCount: Array.isArray(plano.notas) ? plano.notas.length : 0,
             prazo: item.prazo || "",
+            dataInicio: item.dataInicio || "",
+            diasNoStatus: diasDesde(item.statusChangedAt),
             progresso,
             subtotal: subs.length,
             subdone,
@@ -113,7 +126,16 @@ export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: Kanban
               return {
                 ...p,
                 items: p.items.map((it: any) =>
-                  it.id !== card.itemId ? it : { ...it, kanbanStatus: newStatus }
+                  it.id !== card.itemId ? it : {
+                    ...it,
+                    kanbanStatus: newStatus,
+                    statusChangedAt: new Date().toISOString(),
+                    // histórico enxuto: quanto tempo ficou em cada etapa
+                    statusHistory: [
+                      ...(Array.isArray(it.statusHistory) ? it.statusHistory : []),
+                      { de: it.kanbanStatus || "A Fazer", para: newStatus, em: new Date().toISOString() },
+                    ].slice(-50),
+                  }
                 ),
               };
             }),

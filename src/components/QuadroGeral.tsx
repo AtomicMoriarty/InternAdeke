@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Filter, X, Calendar, MessageSquare, GripVertical } from "lucide-react";
+import { Filter, X, Calendar, MessageSquare, GripVertical, Clock } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
   flattenDashboard, setItemKanbanStatus, KANBAN_COLUMNS, COLUMN_COLORS, MODULO_COLOR,
@@ -7,11 +7,12 @@ import {
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
+import { AREAS } from "@/lib/areas";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import ItemModal from "@/components/ItemModal";
 
 type Filters = {
-  modulo: "LGPD" | "Compliance" | "ambos";
+  modulo: string; // nome do módulo, ou "ambos" para todos
   clientes: string[];
   planos: string[];
   responsaveis: string[];
@@ -224,6 +225,16 @@ function KanbanCard({ card, profiles, onClick, onDragStart, onDragEnd }: {
         </span>
 
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {card.diasNoStatus !== null && card.diasNoStatus >= 7 && (
+            <span
+              title={`Parado há ${card.diasNoStatus} dias nesta etapa`}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 700,
+                color: card.diasNoStatus >= 14 ? "#DC2626" : "#B45309",
+              }}>
+              <Clock size={11} /> {card.diasNoStatus}d
+            </span>
+          )}
           {card.notasCount > 0 && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10.5, color: "#64748B", fontWeight: 700 }}>
               <MessageSquare size={11} /> {card.notasCount}
@@ -265,7 +276,7 @@ function FiltersBar({ filters, setFilters, opts, profiles, counts }: {
       <SegmentChoice
         value={filters.modulo}
         onChange={(v) => setFilters({ modulo: v as any })}
-        options={[{ v: "ambos", l: "Ambos" }, { v: "LGPD", l: "LGPD" }, { v: "Compliance", l: "Compliance" }]}
+        options={[{ v: "ambos", l: "Todos" }, ...AREAS.map((a) => ({ v: a.modulo, l: a.modulo }))]}
       />
 
       <MultiPicker label="Cliente" items={opts.clientes.map(c => ({ id: c.id, label: c.name }))}

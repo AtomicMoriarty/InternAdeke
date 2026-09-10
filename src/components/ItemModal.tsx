@@ -13,6 +13,8 @@ import {
 } from "@/lib/notifications";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
+import { moduloOf } from "@/lib/areas";
+import { diasDesde } from "@/lib/flattenItems";
 
 const STATUS_OPTIONS = [
   "A Fazer", "Em Andamento", "Pendência Interna",
@@ -90,8 +92,9 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const item = plano?.items?.find((it) => it.id === itemId);
   if (!item || !plano || !cliente || !area) return null;
 
-  const modulo = areaId === "lgpd" ? "LGPD" : "Compliance";
+  const modulo = moduloOf(areaId);
   const status = item.kanbanStatus || "A Fazer";
+  const diasNoStatus = diasDesde(item.statusChangedAt);
   const statusColor = STATUS_COLORS[status] || "#64748B";
   const checklist = item.checklist || [];
   const checkDone = checklist.filter((ck) => ck.done).length;
@@ -126,7 +129,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   function changeStatus(s) {
-    patchItem({ kanbanStatus: s });
+    if (s === status) { setShowStatusMenu(false); return; }
+    const agora = new Date().toISOString();
+    patchItem({
+      kanbanStatus: s,
+      statusChangedAt: agora,
+      statusHistory: [
+        ...(Array.isArray(item.statusHistory) ? item.statusHistory : []),
+        { de: status, para: s, em: agora },
+      ].slice(-50),
+    });
     setShowStatusMenu(false);
     emitMudancaStatus({
       responsibleIds: item.responsaveis || [],
@@ -285,6 +297,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               </div>
 
               <div>
+                <Label>Data de início</Label>
+                <input
+                  value={item.dataInicio || ""}
+                  onChange={(e) => patchItem({ dataInicio: e.target.value })}
+                  placeholder="DD/MM/AAAA"
+                  style={{ ...fieldStyle, marginTop: 5, width: 130 }}
+                />
+              </div>
+
+              <div>
                 <Label>Prazo</Label>
                 <input
                   value={item.prazo || ""}
@@ -293,6 +315,21 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   style={{ ...fieldStyle, marginTop: 5, width: 130 }}
                 />
               </div>
+
+              {diasNoStatus !== null && (
+                <div>
+                  <Label>Neste status</Label>
+                  <div style={{
+                    marginTop: 5, padding: "7px 12px", borderRadius: 8,
+                    background: diasNoStatus >= 14 ? "#FEF2F2" : diasNoStatus >= 7 ? "#FFFBEB" : "#F8FAFC",
+                    border: `1px solid ${diasNoStatus >= 14 ? "#FECACA" : diasNoStatus >= 7 ? "#FDE68A" : "#E2E8F0"}`,
+                    color: diasNoStatus >= 14 ? "#DC2626" : diasNoStatus >= 7 ? "#B45309" : "#64748B",
+                    fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+                  }}>
+                    {diasNoStatus === 0 ? "hoje" : `${diasNoStatus} dia${diasNoStatus !== 1 ? "s" : ""}`}
+                  </div>
+                </div>
+              )}
 
               {(item.responsaveis || []).length > 0 && (
                 <div>
