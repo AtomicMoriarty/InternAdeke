@@ -29,7 +29,12 @@ BEGIN
       u.email,
       COALESCE(NULLIF(u.raw_user_meta_data->>'display_name', ''), base_username),
       final_username,
-      '#0DD3C5'
+      -- cor estavel derivada do id; a mesma paleta usada por colorFor() no app.
+      -- Dar a mesma cor a todos deixaria os avatares indistinguiveis.
+      (ARRAY['#0DD3C5','#3B82F6','#8B5CF6','#EC4899',
+             '#F59E0B','#10B981','#F97316','#06B6D4'])[
+        (('x' || substr(md5(u.id::TEXT), 1, 8))::BIT(32)::BIGINT % 8) + 1
+      ]
     )
     ON CONFLICT (id) DO NOTHING;
   END LOOP;
@@ -61,7 +66,10 @@ BEGIN
     NEW.email,
     COALESCE(NULLIF(NEW.raw_user_meta_data->>'display_name', ''), base_username),
     final_username,
-    '#0DD3C5'
+    (ARRAY['#0DD3C5','#3B82F6','#8B5CF6','#EC4899',
+           '#F59E0B','#10B981','#F97316','#06B6D4'])[
+      (('x' || substr(md5(NEW.id::TEXT), 1, 8))::BIT(32)::BIGINT % 8) + 1
+    ]
   )
   ON CONFLICT (id) DO NOTHING;
 
@@ -75,40 +83,17 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
--- 3) Permite que usuários logados LEIAM a lista de profiles.
---    Sem isto o picker fica vazio mesmo com os dados preenchidos, porque o RLS
---    bloqueia o SELECT.
+-- 3) Confere se existe politica de leitura. Nao cria nada: este projeto ja tem
+--    "Authenticated can read all profiles". O aviso so aparece se alguem rodar
+--    isto num banco onde o RLS de fato bloquearia o picker.
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename  = 'profiles'
-      AND policyname = 'profiles_select_authenticated'
+    WHERE schemaname = 'public' AND tablename = 'profiles'
+      AND cmd IN ('SELECT', 'ALL')
+      AND 'authenticated' = ANY (roles)
   ) THEN
-    CREATE POLICY profiles_select_authenticated
-      ON public.profiles
-      FOR SELECT
-      TO authenticated
-      USING (true);
-  END IF;
-END $$;
-
-
--- 4) Permite que cada pessoa edite o próprio profile (nome, cor do avatar).
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public'
-      AND tablename  = 'profiles'
-      AND policyname = 'profiles_update_own'
-  ) THEN
-    CREATE POLICY profiles_update_own
-      ON public.profiles
-      FOR UPDATE
-      TO authenticated
-      USING (auth.uid() = id)
-      WITH CHECK (auth.uid() = id);
+    RAISE WARNING 'profiles nao tem politica de SELECT para authenticated: o picker ficara vazio mesmo com a tabela preenchida.';
   END IF;
 END $$;
