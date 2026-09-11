@@ -897,7 +897,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                                 item_id: null, item_nome: null,
                                 autor_id: me.id,
                                 autor_nome: currentProfile?.display_name || me?.email || "sistema",
-                                trecho: "foi adicionado como responsável",
+                                trecho: ids.length > old.length ? "foi adicionado como responsável" : "foi removido como responsável",
                               },
                             });
                           }
