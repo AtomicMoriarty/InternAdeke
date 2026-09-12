@@ -13,8 +13,8 @@ import {
 } from "@/lib/notifications";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
-import { moduloOf } from "@/lib/areas";
-import { diasDesde } from "@/lib/flattenItems";
+import { moduloOf, MODULO_PRODUTOS } from "@/lib/areas";
+import { diasDesde, PRODUTOS_AREA_ID } from "@/lib/flattenItems";
 
 const STATUS_OPTIONS = [
   "A Fazer", "Em Andamento", "Pendência Interna",
@@ -67,12 +67,39 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showMembros, setShowMembros] = useState(false);
   const overlayRef = useRef(null);
+  const modalRef = useRef(null);
   const statusMenuRef = useRef(null);
+  // Guarda quem abriu o modal, para devolver o foco ao fechar
+  const openerRef = useRef(typeof document !== "undefined" ? document.activeElement : null);
 
+  // Foco automatico, ESC e armadilha de foco (Tab nao escapa do modal)
   useEffect(() => {
-    function onKey(e) { if (e.key === "Escape") onClose(); }
+    const openerEl = openerRef.current;
+    if (modalRef.current) modalRef.current.focus();
+
+    function onKey(e) {
+      if (e.key === "Escape") { onClose(); return; }
+
+      if (e.key === "Tab" && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) { e.preventDefault(); return; }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    }
+
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (openerEl && typeof openerEl.focus === "function") openerEl.focus();
+    };
   }, [onClose]);
 
   useEffect(() => {
@@ -86,13 +113,22 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }, [showStatusMenu]);
 
   if (!data) return null;
-  const area = data.areas?.find((a) => a.id === areaId);
-  const cliente = area?.clientes?.find((c) => c.id === clienteId);
-  const plano = cliente?.planos?.find((p) => p.id === planoId);
-  const item = plano?.items?.find((it) => it.id === itemId);
+
+  // Itens de produto ficam em data.produtos, um nivel acima dos itens de area.
+  // O produto faz o papel de cliente e de plano ao mesmo tempo.
+  const ehProduto = areaId === PRODUTOS_AREA_ID;
+  const produto = ehProduto ? data.produtos?.find((p) => p.id === clienteId) : null;
+
+  const area    = ehProduto ? { id: PRODUTOS_AREA_ID, name: MODULO_PRODUTOS } : data.areas?.find((a) => a.id === areaId);
+  const cliente = ehProduto ? produto : area?.clientes?.find((c) => c.id === clienteId);
+  const plano   = ehProduto ? produto : cliente?.planos?.find((p) => p.id === planoId);
+  const item    = ehProduto
+    ? produto?.items?.find((it) => it.id === itemId)
+    : plano?.items?.find((it) => it.id === itemId);
+
   if (!item || !plano || !cliente || !area) return null;
 
-  const modulo = moduloOf(areaId);
+  const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
   const status = item.kanbanStatus || "A Fazer";
   const diasNoStatus = diasDesde(item.statusChangedAt);
   const statusColor = STATUS_COLORS[status] || "#64748B";
@@ -113,6 +149,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   };
 
   function patchItem(patch) {
+    if (ehProduto) {
+      update((prev) => ({
+        ...prev,
+        produtos: (prev.produtos || []).map((p) => p.id !== clienteId ? p : {
+          ...p,
+          items: (p.items || []).map((it) => it.id !== itemId ? it : { ...it, ...patch }),
+        }),
+      }));
+      return;
+    }
     update((prev) => ({
       ...prev,
       areas: (prev.areas || []).map((a) => a.id !== areaId ? a : {
@@ -213,10 +259,17 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
         padding: "48px 20px 20px", overflowY: "auto", fontFamily: "Outfit, sans-serif",
       }}
     >
-      <div style={{
-        background: "#fff", borderRadius: 16, width: "100%", maxWidth: 880,
-        boxShadow: "0 24px 80px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column",
-      }}>
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Detalhes do item: ${item.name}`}
+        tabIndex={-1}
+        style={{
+          background: "#fff", borderRadius: 16, width: "100%", maxWidth: 880,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column",
+          outline: "none",
+        }}>
         {/* ── Cabeçalho ── */}
         <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #F1F5F9", display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>

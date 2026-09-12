@@ -1,5 +1,5 @@
 // Cálculos dos relatórios. Separado da tela para poder ser testado sozinho.
-import { moduloOf } from "@/lib/areas";
+import { moduloOf, MODULO_PRODUTOS } from "@/lib/areas";
 
 export type Transicao = { de: string; para: string; em: string };
 
@@ -72,6 +72,33 @@ export function achatarItens(data: any): ItemPlano[] {
       }
     }
   }
+  // Produtos ficam fora de data.areas e tambem entram nos relatorios
+  for (const prod of data?.produtos || []) {
+    for (const item of prod.items || []) {
+      const checklist = Array.isArray(item.checklist) ? item.checklist : [];
+      out.push({
+        areaId: "produtos",
+        modulo: MODULO_PRODUTOS,
+        clienteId: prod.id,
+        clienteNome: prod.name,
+        planoId: prod.id,
+        planoNome: prod.name,
+        itemId: item.id,
+        itemNome: item.name,
+        status: item.kanbanStatus || "A Fazer",
+        responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
+        prazo: item.prazo || "",
+        dataInicio: item.dataInicio || "",
+        criadoEm: item.criadoEm || null,
+        statusChangedAt: item.statusChangedAt || null,
+        statusHistory: Array.isArray(item.statusHistory) ? item.statusHistory : [],
+        comentarios: Array.isArray(item.comentarios) ? item.comentarios : [],
+        checklistTotal: checklist.length,
+        checklistFeitos: checklist.filter((c: any) => c.done).length,
+      });
+    }
+  }
+
   return out;
 }
 

@@ -14,9 +14,10 @@ let listeners = new Set<(p: Profile[]) => void>();
 
 async function load() {
   const { data } = await supabase.from("profiles").select("*").order("display_name");
-  cache = (data || []) as Profile[];
-  listeners.forEach((l) => l(cache!));
-  return cache;
+  const loadedProfiles = (data || []) as Profile[];
+  cache = loadedProfiles;
+  listeners.forEach((listener) => listener(loadedProfiles));
+  return loadedProfiles;
 }
 
 export function useProfiles() {

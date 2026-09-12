@@ -28,9 +28,17 @@ export function moduloOf(areaId: string): string {
   return areaById(areaId)?.modulo || "Produtos";
 }
 
-export const MODULO_COLOR: Record<string, string> = Object.fromEntries(
-  AREAS.map((a) => [a.modulo, a.cardColor])
-);
+// "Produtos" nao e uma area: e o array data.produtos, paralelo a data.areas.
+// Aparece no Quadro Geral como se fosse um modulo, entao precisa de cor propria.
+export const MODULO_PRODUTOS = "Produtos";
+
+export const MODULO_COLOR: Record<string, string> = {
+  ...Object.fromEntries(AREAS.map((a) => [a.modulo, a.cardColor])),
+  [MODULO_PRODUTOS]: "#8B5CF6",
+};
+
+/** Todos os rotulos de modulo que podem aparecer no Quadro Geral. */
+export const MODULOS = [...AREAS.map((a) => a.modulo), MODULO_PRODUTOS];
 
 // ─── Demandas pré-listadas por área ──────────────────────────────────────────
 // Alimentam a lista suspensa do formulário de novo item. "Outro" sempre permite

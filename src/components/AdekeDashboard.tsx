@@ -46,14 +46,33 @@ function ResponsaveisAvatars({ ids }) {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+// Status unificados com o Quadro Geral e o ItemModal. Antes esta tela usava um
+// conjunto proprio de 5 valores, o que fazia o mesmo item aparecer com status
+// diferente em cada lugar.
 const STATUS_META = {
-  "Concluído":    { color: "#10B981", bg: "#ECFDF5", icon: CheckCircle },
-  "Em andamento": { color: "#3B82F6", bg: "#EFF6FF", icon: Clock },
-  "Planejamento": { color: "#F59E0B", bg: "#FFFBEB", icon: AlertCircle },
-  "Pausado":      { color: "#F97316", bg: "#FFF7ED", icon: PauseCircle },
-  "Não iniciado": { color: "#64748B", bg: "#F8FAFC", icon: MinusCircle },
+  "A Fazer":           { color: "#64748B", bg: "#F8FAFC", icon: MinusCircle },
+  "Em Andamento":      { color: "#3B82F6", bg: "#EFF6FF", icon: Clock },
+  "Pendência Interna": { color: "#F59E0B", bg: "#FFFBEB", icon: AlertCircle },
+  "Pendência Cliente": { color: "#F97316", bg: "#FFF7ED", icon: PauseCircle },
+  "Monitoramento":     { color: "#06B6D4", bg: "#ECFEFF", icon: Activity },
+  "Finalizado":        { color: "#10B981", bg: "#ECFDF5", icon: CheckCircle },
+  "Suspenso":          { color: "#94A3B8", bg: "#F8FAFC", icon: PauseCircle },
 };
-const STATUS_ORDER = ["Concluído", "Em andamento", "Planejamento", "Pausado", "Não iniciado"];
+const STATUS_ORDER = [
+  "A Fazer", "Em Andamento", "Pendência Interna",
+  "Pendência Cliente", "Monitoramento", "Finalizado", "Suspenso",
+];
+
+/** Le o status unificado do item, traduzindo os valores antigos. */
+function getItemKanbanStatus(item) {
+  if (item?.kanbanStatus && STATUS_META[item.kanbanStatus]) return item.kanbanStatus;
+  const s = item?.status;
+  if (s === "Concluído")    return "Finalizado";
+  if (s === "Em andamento") return "Em Andamento";
+  if (s === "Pausado")      return "Suspenso";
+  if (s === "Planejamento") return "Pendência Interna";
+  return "A Fazer";
+}
 const TIPOS_ITEM = ["Organograma", "Política", "Procedimento", "Processo", "Treinamento", "Relatório", "Auditoria", "Documento", "Outro"];
 
 function uid() { return `_${Math.random().toString(36).slice(2, 9)}`; }
@@ -170,7 +189,7 @@ function ensureAreas(data) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function prog(items) {
-  const total = items.length, done = items.filter(i => i.status === "Concluído").length;
+  const total = items.length, done = items.filter(i => getItemKanbanStatus(i) === "Finalizado").length;
   return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
 }
 function areaProg(area) {
@@ -233,12 +252,12 @@ function buildTemplatePlanos(areaId) {
 
 // Stable: completed go to the end, preserving order within each group
 function sortItemsByCompletion(items) {
-  const open = items.filter(i => i.status !== "Concluído");
-  const done = items.filter(i => i.status === "Concluído");
+  const open = items.filter(i => getItemKanbanStatus(i) !== "Finalizado");
+  const done = items.filter(i => getItemKanbanStatus(i) === "Finalizado");
   return [...open, ...done];
 }
 function planoIsDone(p) {
-  return p.items.length > 0 && p.items.every(i => i.status === "Concluído");
+  return p.items.length > 0 && p.items.every(i => getItemKanbanStatus(i) === "Finalizado");
 }
 function sortPlanosByCompletion(planos) {
   const open = planos.filter(p => !planoIsDone(p));
@@ -348,12 +367,17 @@ function Dashboard({ data, setData, nav }) {
     ...data.produtos.flatMap(p => p.items),
   ];
   const total = allItems.length;
-  const done  = allItems.filter(i => i.status === "Concluído").length;
-  const inp2  = allItems.filter(i => i.status === "Em andamento").length;
+  const done  = allItems.filter(i => getItemKanbanStatus(i) === "Finalizado").length;
+  const inp2  = allItems.filter(i => getItemKanbanStatus(i) === "Em Andamento").length;
 
   const chartData = STATUS_ORDER.map(s => ({
-    name: s === "Não iniciado" ? "Não inic." : s === "Em andamento" ? "Em and." : s === "Planejamento" ? "Plan." : s,
-    v: allItems.filter(i => i.status === s).length,
+    name: s === "Em Andamento" ? "Em and."
+        : s === "Pendência Interna" ? "Pend. int."
+        : s === "Pendência Cliente" ? "Pend. cli."
+        : s === "Monitoramento" ? "Monit."
+        : s === "Finalizado" ? "Final."
+        : s,
+    v: allItems.filter(i => getItemKanbanStatus(i) === s).length,
     color: STATUS_META[s].color,
   }));
 
@@ -1230,7 +1254,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
             ))}
           </div>
           {plano.items.map((item, idx) => {
-            const itemDone = item.status === "Concluído";
+            const itemDone = getItemKanbanStatus(item) === "Finalizado";
             const isDragging = dragItemId === item.id;
             const isDragOver = dragOverItemId === item.id && dragItemId !== item.id;
             return (
@@ -1293,7 +1317,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
                 placeholder="Observação..."
                 style={{ ...inp, width: "100%", fontSize: 12 }} />
 
-              <StatusPill status={item.status} onChange={val => updateItem(item.id, "status", val)} />
+              <StatusPill status={getItemKanbanStatus(item)} onChange={val => updateItem(item.id, "kanbanStatus", val)} />
 
               <div style={{ display: "flex", gap: 3 }}>
                 <button onClick={() => moveItem(item.id, -1)} disabled={idx === 0} title="Mover para cima" style={{
@@ -1572,7 +1596,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
     setData(dd => ({ ...dd, produtos: dd.produtos.map(p => p.id !== prodId ? p : { ...p, [field]: val }) }));
   const setStatus = (iIdx, val) =>
     setData(dd => ({ ...dd, produtos: dd.produtos.map(p => p.id !== prodId ? p : {
-      ...p, items: p.items.map((it, i) => i !== iIdx ? it : { ...it, status: val })
+      ...p, items: p.items.map((it, i) => i !== iIdx ? it : { ...it, kanbanStatus: val })
     })}));
   const setObs = (iIdx, val) =>
     setData(dd => ({ ...dd, produtos: dd.produtos.map(p => p.id !== prodId ? p : {
@@ -1754,19 +1778,19 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
               >
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
-                  background: item.status === "Concluído" ? prod.color : "#EEF2F8",
+                  background: getItemKanbanStatus(item) === "Finalizado" ? prod.color : "#EEF2F8",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: item.status === "Concluído" ? "#fff" : "#94A3B8",
+                  color: getItemKanbanStatus(item) === "Finalizado" ? "#fff" : "#94A3B8",
                   fontSize: 13, fontWeight: 800
                 }}>
-                  {item.status === "Concluído" ? <CheckCircle size={15} /> : iIdx + 1}
+                  {getItemKanbanStatus(item) === "Finalizado" ? <CheckCircle size={15} /> : iIdx + 1}
                 </div>
                 <p style={{ color: "#1E293B", fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{item.name}</p>
                 <input value={item.prazo} onChange={e => setPrazo(iIdx, e.target.value)}
                   placeholder="Prazo..." style={{ ...inp, width: "100%", fontSize: 12 }} />
                 <input value={item.obs} onChange={e => setObs(iIdx, e.target.value)}
                   placeholder="Observação..." style={{ ...inp, width: "100%", fontSize: 12 }} />
-                <StatusPill status={item.status} onChange={val => setStatus(iIdx, val)} />
+                <StatusPill status={getItemKanbanStatus(item)} onChange={val => setStatus(iIdx, val)} />
                 <button onClick={() => removeEtapa(iIdx)} style={{
                   background: "none", border: "none", cursor: "pointer", color: "#CBD5E1", padding: 6, borderRadius: 8,
                   transition: "color 0.15s, background 0.15s"

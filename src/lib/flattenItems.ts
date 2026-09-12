@@ -1,6 +1,12 @@
 // Flattens dashboard_state into a flat list of cards for the Quadro Geral.
 
-import { AREA_IDS, moduloOf, MODULO_COLOR as AREA_MODULO_COLOR } from "@/lib/areas";
+import {
+  AREA_IDS, moduloOf, MODULO_PRODUTOS,
+  MODULO_COLOR as AREA_MODULO_COLOR,
+} from "@/lib/areas";
+
+/** id sintetico da "area" de produtos, que na verdade e data.produtos */
+export const PRODUTOS_AREA_ID = "produtos";
 
 export type FlatCard = {
   clienteId: string;
@@ -107,10 +113,74 @@ export function flattenDashboard(data: any): FlatCard[] {
       }
     }
   }
+
+  // Produtos moram em data.produtos, fora de data.areas, mas aparecem no
+  // Quadro Geral como um modulo proprio. Cada produto funciona como cliente e
+  // como plano ao mesmo tempo, ja que seus itens ficam num nivel so.
+  for (const prod of data.produtos || []) {
+    for (const item of prod.items || []) {
+      const subs = Array.isArray(item.subitens) ? item.subitens : [];
+      const subdone = subs.filter((s: any) => s.done || s.concluido).length;
+      const progresso = typeof item.progresso === "number"
+        ? item.progresso
+        : subs.length ? Math.round((subdone / subs.length) * 100)
+        : (deriveKanbanStatus(item) === "Finalizado" ? 100 : 0);
+      cards.push({
+        clienteId: prod.id,
+        clienteNome: prod.name,
+        areaId: PRODUTOS_AREA_ID,
+        modulo: MODULO_PRODUTOS,
+        planoId: prod.id,
+        planoNome: prod.name,
+        itemId: item.id,
+        itemNome: item.name,
+        legacyStatus: item.status || "",
+        kanbanStatus: deriveKanbanStatus(item),
+        responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
+        notasCount: Array.isArray(prod.notas) ? prod.notas.length : 0,
+        prazo: item.prazo || "",
+        dataInicio: item.dataInicio || "",
+        diasNoStatus: diasDesde(item.statusChangedAt),
+        progresso,
+        subtotal: subs.length,
+        subdone,
+      });
+    }
+  }
+
   return cards;
 }
 
+/** Aplica a mudanca de status carimbando o momento e registrando a transicao. */
+function aplicarStatus(it: any, newStatus: KanbanStatus) {
+  const agora = new Date().toISOString();
+  return {
+    ...it,
+    kanbanStatus: newStatus,
+    statusChangedAt: agora,
+    statusHistory: [
+      ...(Array.isArray(it.statusHistory) ? it.statusHistory : []),
+      { de: it.kanbanStatus || deriveKanbanStatus(it), para: newStatus, em: agora },
+    ].slice(-50),
+  };
+}
+
 export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: KanbanStatus): any {
+  // Cards de produto vivem em data.produtos, com um nivel a menos de aninhamento
+  if (card.areaId === PRODUTOS_AREA_ID) {
+    return {
+      ...data,
+      produtos: (data.produtos || []).map((p: any) =>
+        p.id !== card.clienteId ? p : {
+          ...p,
+          items: (p.items || []).map((it: any) =>
+            it.id !== card.itemId ? it : aplicarStatus(it, newStatus)
+          ),
+        }
+      ),
+    };
+  }
+
   return {
     ...data,
     areas: (data.areas || []).map((a: any) => {
@@ -126,16 +196,7 @@ export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: Kanban
               return {
                 ...p,
                 items: p.items.map((it: any) =>
-                  it.id !== card.itemId ? it : {
-                    ...it,
-                    kanbanStatus: newStatus,
-                    statusChangedAt: new Date().toISOString(),
-                    // histórico enxuto: quanto tempo ficou em cada etapa
-                    statusHistory: [
-                      ...(Array.isArray(it.statusHistory) ? it.statusHistory : []),
-                      { de: it.kanbanStatus || "A Fazer", para: newStatus, em: new Date().toISOString() },
-                    ].slice(-50),
-                  }
+                  it.id !== card.itemId ? it : aplicarStatus(it, newStatus)
                 ),
               };
             }),

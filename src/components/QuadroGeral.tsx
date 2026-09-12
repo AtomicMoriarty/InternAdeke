@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Filter, X, Calendar, MessageSquare, GripVertical, Clock } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
@@ -7,7 +7,7 @@ import {
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
-import { AREAS } from "@/lib/areas";
+import { MODULOS } from "@/lib/areas";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import ItemModal from "@/components/ItemModal";
 
@@ -171,10 +171,30 @@ function KanbanCard({ card, profiles, onClick, onDragStart, onDragEnd }: {
   const resps = (card.responsaveis || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean) as Profile[];
   const prazoState = prazoStatus(card.prazo);
 
+  // Sem isto, soltar o card ao final de um arrasto tambem dispara o onClick e
+  // abre o modal sem querer.
+  const draggedRef = useRef(false);
+
   return (
     <div
-      draggable onDragStart={onDragStart} onDragEnd={onDragEnd}
-      onClick={onClick}
+      draggable
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir card: ${card.itemNome}`}
+      onDragStart={() => { draggedRef.current = true; onDragStart(); }}
+      onDragEnd={() => { onDragEnd(); setTimeout(() => { draggedRef.current = false; }, 0); }}
+      onClick={(e) => {
+        if (draggedRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (!draggedRef.current) onClick();
+        }
+      }}
       style={{
         background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10,
         padding: 10, cursor: "pointer", display: "flex", flexDirection: "column", gap: 8,
@@ -276,7 +296,7 @@ function FiltersBar({ filters, setFilters, opts, profiles, counts }: {
       <SegmentChoice
         value={filters.modulo}
         onChange={(v) => setFilters({ modulo: v as any })}
-        options={[{ v: "ambos", l: "Todos" }, ...AREAS.map((a) => ({ v: a.modulo, l: a.modulo }))]}
+        options={[{ v: "ambos", l: "Todos" }, ...MODULOS.map((m) => ({ v: m, l: m }))]}
       />
 
       <MultiPicker label="Cliente" items={opts.clientes.map(c => ({ id: c.id, label: c.name }))}
