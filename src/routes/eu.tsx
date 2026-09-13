@@ -6,7 +6,9 @@ import {
   ArrowLeft,
   Bell,
   Calendar,
+  Check,
   CheckCircle,
+  ChevronDown,
   Clock,
   Edit3,
   LayoutGrid,
@@ -32,9 +34,21 @@ const MODULOS_SELECIONAVEIS: [string, string][] = [
 ];
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDashboardState } from "@/lib/useDashboardState";
-import { flattenDashboard, COLUMN_COLORS, type FlatCard } from "@/lib/flattenItems";
+import {
+  flattenDashboard,
+  setItemKanbanStatus,
+  COLUMN_COLORS,
+  KANBAN_COLUMNS,
+  type FlatCard,
+  type KanbanStatus,
+} from "@/lib/flattenItems";
 import { parseBR } from "@/lib/relatorios";
-import { useNotifications, markRead, type Notification } from "@/lib/notifications";
+import {
+  useNotifications,
+  markRead,
+  emitMudancaStatus,
+  type Notification,
+} from "@/lib/notifications";
 import { useProfiles } from "@/lib/profiles";
 
 export const Route = createFileRoute("/eu")({
@@ -58,7 +72,7 @@ function EuPage() {
   const currentUser = useCurrentUser();
   const profiles = useProfiles();
   const me = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
-  const { data, loaded } = useDashboardState("eu");
+  const { data, loaded, update } = useDashboardState("eu");
   const notifications = useNotifications(currentUser?.id || null);
   const [checked, setChecked] = useState(false);
   const [notes, setNotes] = useState<PersonalNote[]>([]);
@@ -164,6 +178,59 @@ function EuPage() {
 
   const emAberto = myTasks.length - grupos.finalizadas.length;
 
+  /** O que está travado esperando alguém, separado do que está andando. */
+  const esperando = useMemo(
+    () =>
+      myTasks.filter(
+        (c) => c.kanbanStatus === "Pendência Interna" || c.kanbanStatus === "Pendência Cliente",
+      ),
+    [myTasks],
+  );
+
+  /**
+   * Quantas tarefas você finalizou nos últimos sete dias.
+   *
+   * Conta transições para "Finalizado" no statusHistory, não o status atual:
+   * um card finalizado e reaberto não deve sumir da conta da semana, e um
+   * finalizado há meses não deve entrar nela.
+   */
+  const finalizadasNaSemana = useMemo(() => {
+    const corte = new Date();
+    corte.setDate(corte.getDate() - 7);
+    const itens = data ? flattenDashboard(data) : [];
+    let n = 0;
+    for (const card of itens) {
+      if (!currentUser?.id || !card.responsaveis?.includes(currentUser.id)) continue;
+      const hist = (card as unknown as { statusHistory?: { para: string; em: string }[] })
+        .statusHistory;
+      if (!Array.isArray(hist)) continue;
+      if (hist.some((t) => t.para === "Finalizado" && new Date(t.em) >= corte)) n++;
+    }
+    return n;
+  }, [data, currentUser?.id]);
+
+  /** Muda o status sem sair da página, avisando os responsáveis como no quadro. */
+  function mudarStatus(card: FlatCard, novo: KanbanStatus) {
+    if (card.kanbanStatus === novo) return;
+    update((prev) => setItemKanbanStatus(prev, card, novo));
+    emitMudancaStatus({
+      responsibleIds: card.responsaveis || [],
+      novoStatus: novo,
+      ctx: {
+        cliente_id: card.clienteId,
+        cliente_nome: card.clienteNome,
+        modulo: card.modulo,
+        plano_id: card.planoId,
+        plano_nome: card.planoNome,
+        item_id: card.itemId,
+        item_nome: card.itemNome,
+        autor_id: currentUser?.id || null,
+        autor_nome: me?.display_name || currentUser?.email || "sistema",
+        trecho: `Status alterado de "${card.kanbanStatus}" para "${novo}"`,
+      },
+    });
+  }
+
   const unread = notifications.filter((n) => !n.lida);
   const updates = notifications.slice(0, 8);
   const isAdmin =
@@ -264,8 +331,25 @@ function EuPage() {
           )}
 
           {/* Contadores: o que exige atenção hoje, antes da lista */}
-          {emAberto > 0 && (
+          {(emAberto > 0 || finalizadasNaSemana > 0) && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {finalizadasNaSemana > 0 && (
+                <Contador
+                  n={finalizadasNaSemana}
+                  rotulo="finalizada esta semana"
+                  cor="#10B981"
+                  fundo="#ECFDF5"
+                />
+              )}
+              {esperando.length > 0 && (
+                <Contador
+                  n={esperando.length}
+                  rotulo="aguardando"
+                  cor="#F59E0B"
+                  fundo="#FFFBEB"
+                  plural={false}
+                />
+              )}
               {grupos.vencidas.length > 0 && (
                 <Contador
                   n={grupos.vencidas.length}
@@ -305,11 +389,42 @@ function EuPage() {
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <GrupoTarefas titulo="Vencidas" cards={grupos.vencidas} cor="#DC2626" />
-            <GrupoTarefas titulo="Para hoje" cards={grupos.hoje} cor="#F97316" />
-            <GrupoTarefas titulo="Nesta semana" cards={grupos.semana} cor="#B45309" />
-            <GrupoTarefas titulo="Mais adiante" cards={grupos.depois} cor="#64748B" />
-            <GrupoTarefas titulo="Sem prazo" cards={grupos.semPrazo} cor="#94A3B8" />
+            <GrupoTarefas
+              titulo="Aguardando resposta"
+              cards={esperando}
+              cor="#F59E0B"
+              onStatus={mudarStatus}
+            />
+            <GrupoTarefas
+              titulo="Vencidas"
+              cards={grupos.vencidas}
+              cor="#DC2626"
+              onStatus={mudarStatus}
+            />
+            <GrupoTarefas
+              onStatus={mudarStatus}
+              titulo="Para hoje"
+              cards={grupos.hoje}
+              cor="#F97316"
+            />
+            <GrupoTarefas
+              onStatus={mudarStatus}
+              titulo="Nesta semana"
+              cards={grupos.semana}
+              cor="#B45309"
+            />
+            <GrupoTarefas
+              onStatus={mudarStatus}
+              titulo="Mais adiante"
+              cards={grupos.depois}
+              cor="#64748B"
+            />
+            <GrupoTarefas
+              onStatus={mudarStatus}
+              titulo="Sem prazo"
+              cards={grupos.semPrazo}
+              cor="#94A3B8"
+            />
             <GrupoTarefas titulo="Finalizadas" cards={grupos.finalizadas} cor="#10B981" recolhido />
           </div>
         </section>
@@ -586,11 +701,13 @@ function GrupoTarefas({
   cards,
   cor,
   recolhido = false,
+  onStatus,
 }: {
   titulo: string;
   cards: FlatCard[];
   cor: string;
   recolhido?: boolean;
+  onStatus?: (card: FlatCard, novo: KanbanStatus) => void;
 }) {
   const [aberto, setAberto] = useState(!recolhido);
   if (!cards.length) return null;
@@ -633,7 +750,7 @@ function GrupoTarefas({
       {aberto && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           {cards.map((card) => (
-            <TaskRow key={`${card.planoId}-${card.itemId}`} card={card} />
+            <TaskRow key={`${card.planoId}-${card.itemId}`} card={card} onStatus={onStatus} />
           ))}
         </div>
       )}
@@ -641,7 +758,14 @@ function GrupoTarefas({
   );
 }
 
-function TaskRow({ card }: { card: FlatCard }) {
+function TaskRow({
+  card,
+  onStatus,
+}: {
+  card: FlatCard;
+  onStatus?: (card: FlatCard, novo: KanbanStatus) => void;
+}) {
+  const [menuAberto, setMenuAberto] = useState(false);
   const color = COLUMN_COLORS[card.kanbanStatus] || "#64748B";
   // Sinais que já estavam nos dados e a página não mostrava.
   const parado = card.diasNoStatus !== null && card.diasNoStatus >= 7;
@@ -705,6 +829,103 @@ function TaskRow({ card }: { card: FlatCard }) {
             </span>
           )}
           <span style={{ fontSize: 10, color, fontWeight: 800 }}>{card.kanbanStatus}</span>
+
+          {onStatus && card.kanbanStatus !== "Finalizado" && (
+            <button
+              onClick={(e) => {
+                // O Link envolve a linha inteira; sem barrar aqui, agir no card
+                // também navegaria para ele.
+                e.preventDefault();
+                e.stopPropagation();
+                onStatus(card, "Finalizado");
+              }}
+              title="Marcar como finalizada"
+              style={acaoRapida}
+            >
+              <Check size={12} color="#10B981" />
+            </button>
+          )}
+
+          {onStatus && (
+            <span style={{ position: "relative", display: "inline-flex" }}>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setMenuAberto((v) => !v);
+                }}
+                title="Mudar status"
+                style={acaoRapida}
+              >
+                <ChevronDown size={12} color="#64748B" />
+              </button>
+              {menuAberto && (
+                <>
+                  <span
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMenuAberto(false);
+                    }}
+                    style={{ position: "fixed", inset: 0, zIndex: 60 }}
+                  />
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      right: 0,
+                      zIndex: 70,
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+                      minWidth: 180,
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    {KANBAN_COLUMNS.map((st) => (
+                      <button
+                        key={st}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuAberto(false);
+                          onStatus(card, st);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 12px",
+                          background: st === card.kanbanStatus ? "#F8FAFC" : "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          color: COLUMN_COLORS[st],
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: COLUMN_COLORS[st],
+                            flexShrink: 0,
+                          }}
+                        />
+                        {st}
+                      </button>
+                    ))}
+                  </span>
+                </>
+              )}
+            </span>
+          )}
         </span>
         {card.prazo && (
           <div
@@ -862,6 +1083,20 @@ function NoteCard({
     </div>
   );
 }
+
+const acaoRapida: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 22,
+  height: 22,
+  borderRadius: 6,
+  border: "1px solid #E2E8F0",
+  background: "#fff",
+  cursor: "pointer",
+  padding: 0,
+  flexShrink: 0,
+};
 
 function SectionTitle({
   icon,
