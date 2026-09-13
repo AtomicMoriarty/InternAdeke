@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Bell,
   Calendar,
+  CalendarClock,
   Check,
   CheckCircle,
   ChevronDown,
@@ -34,6 +35,7 @@ const MODULOS_SELECIONAVEIS: [string, string][] = [
 ];
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDashboardState } from "@/lib/useDashboardState";
+import { meusPassos, aplicarConclusao, type PassoNoContexto } from "@/lib/registros";
 import {
   flattenDashboard,
   setItemKanbanStatus,
@@ -187,6 +189,22 @@ function EuPage() {
       ),
     [myTasks],
   );
+
+  /**
+   * Os retornos que você prometeu dar.
+   *
+   * Vem das anotações de follow-up: quem escreveu "retorno dia 20" assumiu um
+   * compromisso que não aparece em lugar nenhum se ficar só dentro do card.
+   */
+  const meusProximosPassos = useMemo(
+    () => (data ? meusPassos(data, currentUser?.id || null) : []),
+    [data, currentUser?.id],
+  );
+
+  /** Marca o passo como feito direto daqui, sem precisar abrir o card. */
+  function concluirPassoAqui(passo: PassoNoContexto) {
+    update((prev) => aplicarConclusao(prev, passo));
+  }
 
   /**
    * Quantas tarefas você finalizou nos últimos sete dias.
@@ -386,6 +404,25 @@ function EuPage() {
                   plural={false}
                 />
               )}
+            </div>
+          )}
+
+          {meusProximosPassos.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <SectionTitle
+                icon={<CalendarClock size={15} color="#0D9488" />}
+                title="Retornos que você prometeu"
+                aside={`${meusProximosPassos.length} em aberto`}
+              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                {meusProximosPassos.map((passo) => (
+                  <LinhaPasso
+                    key={`${passo.itemId}-${passo.registroId}`}
+                    passo={passo}
+                    onConcluir={() => concluirPassoAqui(passo)}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -1098,6 +1135,59 @@ const acaoRapida: CSSProperties = {
   padding: 0,
   flexShrink: 0,
 };
+
+/**
+ * Um retorno prometido, com o card de onde saiu.
+ *
+ * Atrasado fica vermelho porque é a informação que muda o que você faz agora.
+ */
+function LinhaPasso({ passo, onConcluir }: { passo: PassoNoContexto; onConcluir: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 9,
+        background: passo.atrasado ? "#FEF2F2" : "#fff",
+        border: `1px solid ${passo.atrasado ? "#FECACA" : "#E2E8F0"}`,
+        borderRadius: 10,
+        padding: "9px 12px",
+      }}
+    >
+      <button
+        onClick={onConcluir}
+        title="Marcar como feito"
+        style={{
+          width: 17,
+          height: 17,
+          borderRadius: 5,
+          border: `1.5px solid ${passo.atrasado ? "#DC2626" : "#CBD5E1"}`,
+          background: "#fff",
+          cursor: "pointer",
+          flexShrink: 0,
+          marginTop: 1,
+        }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{passo.texto}</div>
+        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>
+          {passo.clienteNome} › {passo.itemNome}
+        </div>
+      </div>
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 800,
+          color: passo.atrasado ? "#DC2626" : "#64748B",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
+        {passo.quando || "sem data"}
+      </span>
+    </div>
+  );
+}
 
 function SectionTitle({
   icon,

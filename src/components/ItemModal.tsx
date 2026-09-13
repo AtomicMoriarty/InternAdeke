@@ -10,6 +10,7 @@ import {
   Paperclip,
   Tag,
   Edit3,
+  CalendarClock,
   ListChecks,
   Trash2,
   ChevronDown,
@@ -59,6 +60,18 @@ import {
   podeVerValores,
 } from "@/lib/comercial";
 import { trajetoriaDoItem } from "@/lib/relatorios";
+import {
+  TIPOS_ESCRITA,
+  TIPO_PADRAO,
+  CANAIS,
+  tipoDoRegistro,
+  tipoPorId,
+  corDoRegistro,
+  nomeDoTipo,
+  proximoPasso,
+  concluirPasso,
+  temPassoAberto,
+} from "@/lib/registros";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
 import {
@@ -132,6 +145,16 @@ function timeAgo(iso: string) {
   return `${Math.round(h / 24)}d`;
 }
 
+/** O sistema inteiro guarda data como DD/MM/AAAA; o input HTML quer AAAA-MM-DD. */
+function brParaISO(br: string) {
+  const m = String(br || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+function isoParaBR(iso: string) {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
 function prazoToInputValue(prazo: string) {
   if (!prazo) return "";
   const br = prazo.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/);
@@ -171,6 +194,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
 
   const [commentDraft, setCommentDraft] = useState("");
+  // A anotacao tem tipo, e o follow-up pergunta canal, desfecho e proximo passo.
+  const [tipoDraft, setTipoDraft] = useState(TIPO_PADRAO);
+  const [canalDraft, setCanalDraft] = useState(CANAIS[0]);
+  const [resultadoDraft, setResultadoDraft] = useState("");
+  const [passoDraft, setPassoDraft] = useState("");
+  const [passoEmDraft, setPassoEmDraft] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
   const [newEtiquetaLabel, setNewEtiquetaLabel] = useState("");
   const [newEtiquetaColor, setNewEtiquetaColor] = useState(ETIQUETA_COLORS[0]);
   const [showEtiquetaForm, setShowEtiquetaForm] = useState(false);
@@ -307,6 +337,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const allActivity: Comentario[] = (item.comentarios || [])
     .slice()
     .sort((a: Comentario, b: Comentario) => (a.created_at || "").localeCompare(b.created_at || ""));
+  const passoAberto = proximoPasso(item);
+  // Só oferece filtro para os tipos que existem neste card.
+  const tiposPresentes = [...new Set(allActivity.map(tipoDoRegistro))];
+  const atividadeVisivel =
+    filtroTipo === "todos"
+      ? allActivity
+      : allActivity.filter((c: Comentario) => tipoDoRegistro(c) === filtroTipo);
 
   const ctx: NotifContext = {
     cliente_id: clienteId,
@@ -401,21 +438,33 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
 
   function addComment() {
     const txt = commentDraft.trim();
-    if (!txt) return;
+    // Um follow-up pode não ter texto e ainda assim valer: "liguei, sem
+    // resposta, retorno dia 20" já está todo nos campos.
+    const temDetalhe = Boolean(resultadoDraft.trim() || passoDraft.trim());
+    if (!txt && !temDetalhe) return;
+
     const meName = currentProfile?.display_name || "Usuário";
-    const entry = {
+    const ehFollowup = tipoDraft === "followup";
+    const entry: Record<string, unknown> = {
       id: `cm${uid()}`,
-      tipo: "comentario",
+      tipo: tipoDraft,
       date: todayBR(),
       created_at: new Date().toISOString(),
       text: txt,
       autor_id: currentUser?.id || null,
       autor_nome: meName,
+      ...(ehFollowup ? { canal: canalDraft, resultado: resultadoDraft.trim() } : {}),
+      ...(passoDraft.trim()
+        ? { proximoPasso: passoDraft.trim(), proximoPassoEm: passoEmDraft }
+        : {}),
     };
     const cmd = interpretarTexto(txt, profiles);
     // O comando não fica no texto salvo: já foi executado, virou ruído.
     patchItem({ comentarios: [...(item.comentarios || []), { ...entry, text: cmd.textoLimpo }] });
     setCommentDraft("");
+    setResultadoDraft("");
+    setPassoDraft("");
+    setPassoEmDraft("");
 
     if (cmd.ehTarefa) criarTarefaDoTexto(cmd, entry.id);
     if (currentUser) {
@@ -1816,35 +1865,197 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               Atividade
             </div>
 
-            {/* Comment input */}
+            {/* Próximo passo em aberto: o compromisso sobe para o topo, senão
+                fica enterrado no meio da conversa e ninguém volta nele. */}
+            {passoAberto && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 9,
+                  background: passoAberto.atrasado ? "#FEF2F2" : "#F0FDFA",
+                  border: `1px solid ${passoAberto.atrasado ? "#FECACA" : "#99F6E4"}`,
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              >
+                <CalendarClock
+                  size={14}
+                  color={passoAberto.atrasado ? "#DC2626" : "#0D9488"}
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      color: passoAberto.atrasado ? "#DC2626" : "#0D9488",
+                    }}
+                  >
+                    Próximo passo{passoAberto.atrasado ? " · atrasado" : ""}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#0F172A", fontWeight: 600, marginTop: 2 }}>
+                    {passoAberto.texto}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>
+                    {passoAberto.quando ? `para ${passoAberto.quando}` : "sem data"}
+                    {passoAberto.autorNome ? ` · ${passoAberto.autorNome}` : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => patchItem(concluirPasso(item, passoAberto.registroId))}
+                  title="Marcar próximo passo como feito"
+                  style={{
+                    background: "#fff",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 7,
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    color: "#0D9488",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <Check size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* Escrever uma anotação */}
             <div>
+              <div style={{ display: "flex", gap: 5, marginBottom: 7, flexWrap: "wrap" }}>
+                {TIPOS_ESCRITA.map((t) => {
+                  const ativo = tipoDraft === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTipoDraft(t.id)}
+                      style={{
+                        background: ativo ? `${t.cor}18` : "#fff",
+                        border: `1px solid ${ativo ? t.cor : "#E2E8F0"}`,
+                        color: ativo ? t.cor : "#94A3B8",
+                        borderRadius: 20,
+                        padding: "4px 11px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {t.nome}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {tipoDraft === "followup" && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                  <select
+                    value={canalDraft}
+                    onChange={(e) => setCanalDraft(e.target.value)}
+                    style={{ ...fieldStyle, width: 120, fontSize: 11 }}
+                  >
+                    {CANAIS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={resultadoDraft}
+                    onChange={(e) => setResultadoDraft(e.target.value)}
+                    placeholder="O que saiu disso? (reunião marcada, sem resposta...)"
+                    style={{ ...fieldStyle, flex: 1, minWidth: 180, fontSize: 11 }}
+                  />
+                </div>
+              )}
+
               <MentionTextarea
                 value={commentDraft}
                 onChange={setCommentDraft}
                 onSubmit={addComment}
-                placeholder="Escrever um comentário... use @ para mencionar"
+                placeholder={
+                  tipoDraft === "followup"
+                    ? "Detalhes do contato... @ menciona, !task vira tarefa"
+                    : "Escrever... @ para mencionar, !task para virar tarefa"
+                }
                 rows={3}
               />
-              {commentDraft.trim() && (
+
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                <input
+                  value={passoDraft}
+                  onChange={(e) => setPassoDraft(e.target.value)}
+                  placeholder="Próximo passo (opcional)"
+                  style={{ ...fieldStyle, flex: 1, minWidth: 160, fontSize: 11 }}
+                />
+                <input
+                  type="date"
+                  value={brParaISO(passoEmDraft)}
+                  onChange={(e) => setPassoEmDraft(isoParaBR(e.target.value))}
+                  title="Quando voltar nisso"
+                  style={{ ...fieldStyle, width: 140, fontSize: 11 }}
+                />
+              </div>
+
+              {(commentDraft.trim() || resultadoDraft.trim() || passoDraft.trim()) && (
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                   <button onClick={addComment} style={primaryBtn}>
                     Salvar
                   </button>
-                  <button onClick={() => setCommentDraft("")} style={ghostBtn}>
+                  <button
+                    onClick={() => {
+                      setCommentDraft("");
+                      setResultadoDraft("");
+                      setPassoDraft("");
+                      setPassoEmDraft("");
+                    }}
+                    style={ghostBtn}
+                  >
                     Cancelar
                   </button>
                 </div>
               )}
             </div>
 
+            {/* Filtro por tipo: só aparece quando há o que filtrar */}
+            {tiposPresentes.length > 1 && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {["todos", ...tiposPresentes].map((id) => {
+                  const ativo = filtroTipo === id;
+                  const cor = id === "todos" ? "#0F172A" : tipoPorId(id)?.cor || "#64748B";
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setFiltroTipo(id)}
+                      style={{
+                        background: ativo ? cor : "transparent",
+                        border: `1px solid ${ativo ? cor : "#E2E8F0"}`,
+                        color: ativo ? "#fff" : "#94A3B8",
+                        borderRadius: 20,
+                        padding: "3px 10px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {id === "todos" ? `Tudo (${allActivity.length})` : nomeDoTipo(id)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Activity list */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {allActivity.length === 0 && (
+              {atividadeVisivel.length === 0 && (
                 <p style={{ fontSize: 12, color: "#CBD5E1", fontStyle: "italic" }}>
-                  Sem atividade ainda.
+                  {allActivity.length === 0 ? "Sem atividade ainda." : "Nada deste tipo aqui."}
                 </p>
               )}
-              {allActivity.map((c: Comentario) => {
+              {atividadeVisivel.map((c: Comentario) => {
                 const p = profiles.find((x) => x.id === c.autor_id);
                 const avatarColor = p ? p.avatar_color || colorFor(p.id) : "#64748B";
                 const name = c.autor_nome || "Usuário";
@@ -1882,6 +2093,21 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                         </span>
                         <span style={{ fontSize: 10, color: "#94A3B8" }}>
                           {c.created_at ? timeAgo(c.created_at) : c.date}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: 0.4,
+                            textTransform: "uppercase",
+                            color: corDoRegistro(c),
+                            background: `${corDoRegistro(c)}15`,
+                            borderRadius: 20,
+                            padding: "1px 7px",
+                          }}
+                        >
+                          {nomeDoTipo(tipoDoRegistro(c))}
+                          {c.canal ? ` · ${c.canal}` : ""}
                         </span>
                         <button
                           onClick={() => virarTarefa(c)}
@@ -1943,6 +2169,50 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                           <MentionText text={c.text} />
                         </div>
                       )}
+
+                      {c.resultado ? (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#0F172A",
+                            marginTop: 4,
+                            paddingLeft: 8,
+                            borderLeft: `2px solid ${corDoRegistro(c)}`,
+                          }}
+                        >
+                          <strong style={{ color: "#64748B", fontWeight: 700 }}>Desfecho:</strong>{" "}
+                          {String(c.resultado)}
+                        </div>
+                      ) : null}
+
+                      {c.proximoPasso ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 11,
+                            marginTop: 4,
+                            color: c.concluidoEm ? "#94A3B8" : "#0D9488",
+                            textDecoration: c.concluidoEm ? "line-through" : "none",
+                          }}
+                        >
+                          <CalendarClock size={11} />
+                          <span>
+                            {String(c.proximoPasso)}
+                            {c.proximoPassoEm ? ` — ${String(c.proximoPassoEm)}` : ""}
+                          </span>
+                          {temPassoAberto(c) && (
+                            <button
+                              onClick={() => patchItem(concluirPasso(item, c.id))}
+                              title="Marcar como feito"
+                              style={miniTextBtn}
+                            >
+                              <Check size={11} />
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );

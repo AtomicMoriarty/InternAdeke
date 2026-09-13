@@ -6,7 +6,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Clock, XCircle, RotateCcw } from "lucide-react";
+import { Clock, XCircle, RotateCcw, CalendarClock } from "lucide-react";
 import {
   montarFunil,
   negociosDoFunil,
@@ -26,6 +26,7 @@ import type { DashboardState, Area, Cliente, Plano, Item } from "@/lib/dashboard
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import ItemModal from "@/components/ItemModal";
+import { proximoPasso } from "@/lib/registros";
 
 const DIAS_PARADO_ALERTA = 14;
 
@@ -52,6 +53,22 @@ export default function FunilComercial({ data, setData }: Props) {
   const parados = useMemo(() => negociosParados(negocios, DIAS_PARADO_ALERTA), [negocios]);
   const origens = useMemo(() => porOrigem(negocios), [negocios]);
   const perdidos = useMemo(() => negocios.filter((n) => n.perdido), [negocios]);
+
+  /**
+   * Negócio vivo sem próximo passo marcado.
+   *
+   * É o vazamento silencioso do funil: ninguém decidiu perder, só pararam de
+   * dar retorno. Fechamento e pós-venda ficam de fora — lá o combinado já foi
+   * feito e cobrar retorno não faz sentido.
+   */
+  const semProximoPasso = useMemo(
+    () =>
+      negocios.filter(
+        (n) =>
+          !n.perdido && n.etapa !== "fechamento" && n.etapa !== "posVenda" && !proximoPasso(n.item),
+      ),
+    [negocios],
+  );
 
   /** Grava um patch no item, atravessando cliente → plano → item. */
   function patchNegocio(n: Negocio, patch: Record<string, unknown>) {
@@ -159,6 +176,28 @@ export default function FunilComercial({ data, setData }: Props) {
             {parados[0]
               ? ` — o mais antigo é ${parados[0].clienteNome} (${parados[0].diasParado} dias)`
               : ""}
+          </span>
+        </div>
+      )}
+
+      {semProximoPasso.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: "#F0F9FF",
+            border: "1px solid #BAE6FD",
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 16,
+          }}
+        >
+          <CalendarClock size={15} color="#0369A1" />
+          <span style={{ fontSize: 12, color: "#075985" }}>
+            <strong>{semProximoPasso.length}</strong> negócio
+            {semProximoPasso.length !== 1 ? "s" : ""} em aberto sem próximo passo marcado — abra o
+            card e registre um follow-up com data para não deixar cair.
           </span>
         </div>
       )}
@@ -437,6 +476,7 @@ function CardNegocio({
     .map((id) => profiles.find((p) => p.id === id))
     .filter(Boolean) as Profile[];
   const parado = (negocio.diasParado ?? 0) >= DIAS_PARADO_ALERTA;
+  const passo = proximoPasso(negocio.item);
 
   return (
     <div
@@ -484,6 +524,22 @@ function CardNegocio({
         {verValores && negocio.valor > 0 && (
           <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A" }}>
             {formatarValor(negocio.valor)}
+          </span>
+        )}
+        {passo && (
+          <span
+            title={`Próximo passo: ${passo.texto}${passo.quando ? ` (${passo.quando})` : ""}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              color: passo.atrasado ? "#DC2626" : "#0D9488",
+            }}
+          >
+            <CalendarClock size={10} />
+            {passo.quando || "sem data"}
           </span>
         )}
         <span
