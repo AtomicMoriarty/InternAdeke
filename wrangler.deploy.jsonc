@@ -1,0 +1,22 @@
+// Configuração usada só para publicar, separada de wrangler.jsonc para não
+// mexer no desenvolvimento.
+//
+// Por que existe: wrangler.jsonc aponta main para src/server.ts, que é o certo
+// para o dev, mas publicar a partir do codigo-fonte falha — o bundle esbarra em
+// "tanstack-start-manifest:v", um modulo virtual que so existe durante o build
+// do Vite. Aqui apontamos para a saida ja construida.
+//
+// O nome tem que ser adekeintern: e o worker que esta no ar, e e nele que vivem
+// os segredos (GRANOLA_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY e os demais).
+// Publicar com outro nome criaria um worker vazio em outra URL.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adekeintern",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "dist/server/server.js",
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS"
+  }
+}
