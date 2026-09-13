@@ -433,6 +433,30 @@ function isCatastrophicSsrErrorBody(body: string, responseStatus: number): boole
 
 // h3 swallows in-handler throws into a normal 500 Response with body
 // {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
+/**
+ * Faz o navegador reconferir o HTML a cada visita.
+ *
+ * Os arquivos de JS e CSS tem o hash no nome, entao podem ficar cacheados para
+ * sempre — trocam de nome quando mudam. O HTML nao: e ele que aponta para o
+ * bundle novo. Sem Cache-Control, o navegador aplica cache por heuristica e a
+ * pessoa continua vendo a versao antiga depois de publicar, sem ter como
+ * desconfiar. Foi o que aconteceu com as abas do Comercial.
+ *
+ * no-cache nao significa "nao guarde": significa "guarde, mas pergunte antes de
+ * usar". Com ETag, a resposta normal e um 304 vazio — barato e sempre certo.
+ */
+function semCacheNoHtml(response: Response): Response {
+  const tipo = response.headers.get("content-type") ?? "";
+  if (!tipo.includes("text/html")) return response;
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-cache, must-revalidate");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
@@ -510,7 +534,7 @@ export default {
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return semCacheNoHtml(await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
       return brandedErrorResponse();
