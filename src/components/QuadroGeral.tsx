@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef } from "react";
-import { Filter, X, Calendar, MessageSquare, GripVertical, CalendarClock } from "lucide-react";
+import { Filter, X, Calendar, MessageSquare, GripVertical, CalendarClock, Check, CheckSquare } from "lucide-react";
 import ItemModal from "@/components/ItemModal";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
+import { aplicarEmLote, descreverAcao, type AcaoEmLote } from "@/lib/edicaoEmLote";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { MODULOS, ALL_MODULES, allowedModulesFor } from "@/lib/areas";
 
@@ -55,6 +56,9 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
     planoId: string;
     itemId: string;
   } | null>(null);
+  // Edicao em lote: fora do modo selecao o quadro funciona como antes.
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
   const allCards = useMemo(
     () =>
@@ -117,6 +121,63 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
     });
   }
 
+  function alternarSelecao(itemId: string) {
+    setSelecionados((prev) => {
+      const n = new Set(prev);
+      n.has(itemId) ? n.delete(itemId) : n.add(itemId);
+      return n;
+    });
+  }
+
+  function sairDoModoSelecao() {
+    setModoSelecao(false);
+    setSelecionados(new Set());
+  }
+
+  const cardsSelecionados = useMemo(
+    () => filtered.filter((c) => selecionados.has(c.itemId)),
+    [filtered, selecionados],
+  );
+
+  function executarEmLote(acaoRecebida: AcaoEmLote) {
+    if (!cardsSelecionados.length) return;
+    const alvos = cardsSelecionados;
+    // A barra nao conhece o usuario logado; o autor e preenchido aqui.
+    const acao: AcaoEmLote =
+      acaoRecebida.tipo === "comentario"
+        ? {
+            ...acaoRecebida,
+            autorId: currentUser?.id || null,
+            autorNome: currentProfile?.display_name || currentUser?.email || "sistema",
+          }
+        : acaoRecebida;
+    update((prev: any) => aplicarEmLote(prev, alvos, acao).data);
+
+    // Mudanca de status avisa os responsaveis, igual ao arrastar um card
+    if (acao.tipo === "status") {
+      for (const card of alvos) {
+        if (card.kanbanStatus === acao.status) continue;
+        emitMudancaStatus({
+          responsibleIds: card.responsaveis || [],
+          novoStatus: acao.status,
+          ctx: {
+            cliente_id: card.clienteId,
+            cliente_nome: card.clienteNome,
+            modulo: card.modulo,
+            plano_id: card.planoId,
+            plano_nome: card.planoNome,
+            item_id: card.itemId,
+            item_nome: card.itemNome,
+            autor_id: currentUser?.id || null,
+            autor_nome: currentProfile?.display_name || currentUser?.email || "sistema",
+            trecho: `Status alterado de "${card.kanbanStatus}" para "${acao.status}" (edição em lote)`,
+          },
+        });
+      }
+    }
+    sairDoModoSelecao();
+  }
+
   function openCard(card: FlatCard) {
     // Produtos abrem normalmente: o ItemModal sabe ler data.produtos.
     setModalItem({
@@ -135,6 +196,8 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
         opts={opts}
         profiles={profiles}
         counts={{ total: filtered.length, all: allCards.length }}
+        modoSelecao={modoSelecao}
+        onToggleSelecao={() => (modoSelecao ? sairDoModoSelecao() : setModoSelecao(true))}
       />
 
       <div
@@ -212,7 +275,9 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
                       setDragging(null);
                       setHoverCol(null);
                     }}
-                    onClick={() => openCard(card)}
+                    onClick={() => (modoSelecao ? alternarSelecao(card.itemId) : openCard(card))}
+                    modoSelecao={modoSelecao}
+                    selecionado={selecionados.has(card.itemId)}
                   />
                 ))}
                 {list.length === 0 && (
@@ -247,6 +312,18 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
         >
           Carregando…
         </div>
+      )}
+
+      {modoSelecao && (
+        <BarraDeLote
+          quantos={cardsSelecionados.length}
+          totalVisivel={filtered.length}
+          profiles={profiles}
+          onSelecionarTodos={() => setSelecionados(new Set(filtered.map((c) => c.itemId)))}
+          onLimpar={() => setSelecionados(new Set())}
+          onSair={sairDoModoSelecao}
+          onAcao={executarEmLote}
+        />
       )}
 
       {modalItem && (
@@ -286,10 +363,15 @@ function KanbanCard({
 
   return (
     <div
-      draggable
+      draggable={!modoSelecao}
       role="button"
       tabIndex={0}
-      aria-label={`Abrir card: ${card.itemNome}`}
+      aria-pressed={modoSelecao ? !!selecionado : undefined}
+      aria-label={
+        modoSelecao
+          ? `${selecionado ? "Desmarcar" : "Marcar"} card: ${card.itemNome}`
+          : `Abrir card: ${card.itemNome}`
+      }
       onDragStart={() => {
         draggedRef.current = true;
         onDragStart();
@@ -746,6 +828,182 @@ function MultiPicker({
     </div>
   );
 }
+
+
+// ─── Barra de edição em lote ─────────────────────────────────────────────────
+function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLimpar, onSair, onAcao }: {
+  quantos: number;
+  totalVisivel: number;
+  profiles: Profile[];
+  onSelecionarTodos: () => void;
+  onLimpar: () => void;
+  onSair: () => void;
+  onAcao: (a: AcaoEmLote) => void;
+}) {
+  const [menu, setMenu] = useState<null | "status" | "membros" | "comentario">(null);
+  const [texto, setTexto] = useState("");
+  const [membros, setMembros] = useState<string[]>([]);
+  const nada = quantos === 0;
+
+  function fechar() {
+    setMenu(null);
+    setTexto("");
+    setMembros([]);
+  }
+
+  return (
+    <div
+      role="region"
+      aria-label="Edição em lote"
+      style={{
+        position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 20, zIndex: 500,
+        background: "#0F172A", color: "#fff", borderRadius: 12, padding: "10px 14px",
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.3)", fontFamily: "Outfit, sans-serif",
+        maxWidth: "calc(100vw - 32px)",
+      }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
+        {nada ? "Nenhum card selecionado" : `${quantos} selecionado${quantos !== 1 ? "s" : ""}`}
+      </span>
+
+      <button onClick={onSelecionarTodos} style={btnLote} title={`Selecionar os ${totalVisivel} cards visíveis`}>
+        Todos ({totalVisivel})
+      </button>
+      {!nada && <button onClick={onLimpar} style={btnLote}>Limpar</button>}
+
+      <span style={{ width: 1, height: 20, background: "#334155" }} />
+
+      {/* Status */}
+      <div style={{ position: "relative" }}>
+        <button disabled={nada} onClick={() => setMenu(menu === "status" ? null : "status")} style={btnLote}>
+          Status ▾
+        </button>
+        {menu === "status" && (
+          <div style={popLote}>
+            {KANBAN_COLUMNS.map((st) => (
+              <button
+                key={st}
+                onClick={() => { onAcao({ tipo: "status", status: st }); fechar(); }}
+                style={{ ...itemPop, color: COLUMN_COLORS[st] }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: COLUMN_COLORS[st], flexShrink: 0 }} />
+                {st}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Membros */}
+      <div style={{ position: "relative" }}>
+        <button disabled={nada} onClick={() => setMenu(menu === "membros" ? null : "membros")} style={btnLote}>
+          Membros ▾
+        </button>
+        {menu === "membros" && (
+          <div style={{ ...popLote, minWidth: 250 }}>
+            <div style={{ maxHeight: 200, overflowY: "auto" }}>
+              {profiles.map((p) => {
+                const on = membros.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setMembros((m) => (on ? m.filter((x) => x !== p.id) : [...m, p.id]))}
+                    style={{ ...itemPop, background: on ? "#F0FDFA" : "transparent", color: "#0F172A" }}
+                  >
+                    <span style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                      background: p.avatar_color || colorFor(p.id), color: "#fff",
+                      fontSize: 8, fontWeight: 800, display: "inline-flex",
+                      alignItems: "center", justifyContent: "center",
+                    }}>{initials(p.display_name)}</span>
+                    {p.display_name}
+                    {on && <Check size={12} color="#0DD3C5" style={{ marginLeft: "auto" }} />}
+                  </button>
+                );
+              })}
+            </div>
+            {membros.length > 0 && (
+              <div style={{ display: "flex", gap: 4, padding: 6, borderTop: "1px solid #F1F5F9" }}>
+                <button onClick={() => { onAcao({ tipo: "responsaveis", ids: membros, modo: "adicionar" }); fechar(); }} style={btnPop}>
+                  Adicionar
+                </button>
+                <button onClick={() => { onAcao({ tipo: "responsaveis", ids: membros, modo: "remover" }); fechar(); }} style={btnPopSec}>
+                  Remover
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Comentário */}
+      <div style={{ position: "relative" }}>
+        <button disabled={nada} onClick={() => setMenu(menu === "comentario" ? null : "comentario")} style={btnLote}>
+          Comentar ▾
+        </button>
+        {menu === "comentario" && (
+          <div style={{ ...popLote, minWidth: 280, padding: 8 }}>
+            <textarea
+              autoFocus
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              placeholder="Mesmo comentário em todos os selecionados..."
+              rows={3}
+              style={{
+                width: "100%", border: "1px solid #E2E8F0", borderRadius: 8, padding: "7px 9px",
+                fontSize: 12, fontFamily: "inherit", resize: "vertical", outline: "none", color: "#0F172A",
+              }}
+            />
+            <button
+              disabled={!texto.trim()}
+              onClick={() => { onAcao({ tipo: "comentario", texto, autorId: null, autorNome: "" }); fechar(); }}
+              style={{ ...btnPop, width: "100%", marginTop: 6, opacity: texto.trim() ? 1 : 0.5 }}
+            >
+              Comentar em {quantos}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Acompanhamento */}
+      <button disabled={nada} onClick={() => onAcao({ tipo: "acompanhamento", ligado: true })} style={btnLote}
+        title="Ligar acompanhamento semanal nos selecionados">
+        <CalendarClock size={12} /> Acompanhar
+      </button>
+
+      <span style={{ width: 1, height: 20, background: "#334155" }} />
+      <button onClick={onSair} style={{ ...btnLote, background: "transparent" }} title="Sair do modo seleção">
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
+const btnLote: any = {
+  display: "inline-flex", alignItems: "center", gap: 5,
+  background: "#1E293B", border: "1px solid #334155", borderRadius: 8,
+  color: "#fff", padding: "6px 10px", fontSize: 11, fontWeight: 700,
+  cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+};
+const popLote: any = {
+  position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 600,
+  background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10,
+  boxShadow: "0 12px 40px rgba(0,0,0,0.2)", minWidth: 190, overflow: "hidden",
+};
+const itemPop: any = {
+  display: "flex", alignItems: "center", gap: 8, width: "100%",
+  padding: "8px 12px", background: "transparent", border: "none",
+  fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+};
+const btnPop: any = {
+  background: "#0DD3C5", border: "none", borderRadius: 7, color: "#fff",
+  padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flex: 1,
+};
+const btnPopSec: any = {
+  background: "#F1F5F9", border: "1px solid #E2E8F0", borderRadius: 7, color: "#475569",
+  padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flex: 1,
+};
 
 // ─── Filter logic / prazo helpers ────────────────────────────────────────────
 function filterCards(cards: FlatCard[], f: Filters): FlatCard[] {
