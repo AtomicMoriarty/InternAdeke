@@ -58,7 +58,7 @@ function deriveKanbanStatus(item: Item): KanbanStatus {
   if (item.kanbanStatus && (KANBAN_COLUMNS as readonly string[]).includes(item.kanbanStatus)) {
     return item.kanbanStatus as KanbanStatus;
   }
-  const s = item.status;
+  const s = String(item.status || "");
   if ((KANBAN_COLUMNS as readonly string[]).includes(s)) return s as KanbanStatus;
   if (s === "Concluído") return "Finalizado";
   if (s === "Em andamento") return "Em Andamento";

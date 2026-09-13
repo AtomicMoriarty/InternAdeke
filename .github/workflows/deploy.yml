@@ -27,6 +27,12 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      # Antes do build, porque o build nao confere tipo nenhum: o vite usa
+      # esbuild, que apaga os tipos sem olhar. Foi assim que um "Cannot find
+      # name" chegou em producao e derrubou o Quadro Geral.
+      - name: Conferir tipos
+        run: npm run typecheck
+
       - name: Build
         run: npm run build
         env:

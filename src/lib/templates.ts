@@ -97,7 +97,9 @@ export function ensureTemplates(data: DashboardState): DashboardState {
 
 /** Templates que valem num quadro: os dele mais os globais. */
 export function templatesDaArea(data: DashboardState | null, areaId: string): TemplateCard[] {
-  const todos: TemplateCard[] = Array.isArray(data?.templates) ? data.templates : [];
+  const todos: TemplateCard[] = Array.isArray(data?.templates)
+    ? (data.templates as TemplateCard[])
+    : [];
   return todos
     .filter((t) => !t.areaId || t.areaId === areaId)
     .sort((a, b) => a.nome.localeCompare(b.nome));

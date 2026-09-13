@@ -109,7 +109,7 @@ export async function emitNotifications(opts: {
     rows.push({ ...baseRow(ctx), user_id: uid, tipo: "nota_responsavel" });
   }
   if (!rows.length) return;
-  await supabase.from("notifications").insert(rows);
+  await supabase.from("notifications").insert(rows as never);
 }
 
 function baseRow(ctx: NotifContext) {

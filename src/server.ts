@@ -304,11 +304,12 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
   const integrationPassword =
     env?.GRANOLA_SUPABASE_PASSWORD || process.env.GRANOLA_SUPABASE_PASSWORD;
 
-  if (!supabaseUrl || (!serviceKey && !publishableKey)) {
+  const chave = serviceKey || publishableKey;
+  if (!supabaseUrl || !chave) {
     return apiJson({ error: "Missing Supabase URL/key for webhook" }, { status: 500 });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey || publishableKey, {
+  const supabase = createClient(supabaseUrl, chave, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -334,7 +335,9 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
   if (!area) return apiJson({ error: `Area not found: ${areaId}` }, { status: 404 });
 
   const requestedClient = plain(
-    body.clienteId || body.cliente_id || body.clientName || body.cliente || body.Title || "",
+    String(
+      body.clienteId || body.cliente_id || body.clientName || body.cliente || body.Title || "",
+    ),
   );
   const cliente =
     area.clientes.find((c: Cliente) => c.id === body.clienteId || c.id === body.cliente_id) ||
@@ -492,7 +495,7 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname === "/api/granola-risk") {
-        return await handleGranolaRisk(request, env);
+        return await handleGranolaRisk(request, env as WorkerEnv);
       }
       // Disparo manual, para conferir sem esperar a segunda-feira. Protegido
       // pelo mesmo segredo do webhook do Granola.
@@ -503,7 +506,7 @@ export default {
         if (!segredo || enviado !== segredo) {
           return apiJson({ error: "Nao autorizado" }, { status: 401 });
         }
-        return apiJson(await rodarAcompanhamentoSemanal(env));
+        return apiJson(await rodarAcompanhamentoSemanal(env as WorkerEnv));
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

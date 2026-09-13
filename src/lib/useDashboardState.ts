@@ -11,7 +11,7 @@ export function useDashboardState(scope = "default") {
   const dataRef = useRef<DashboardState | null>(null);
   const lastSentRef = useRef("");
   const pendingRef = useRef(false);
-  const saveTimer = useRef<DashboardState | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -23,9 +23,11 @@ export function useDashboardState(scope = "default") {
         .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
-        dataRef.current = row.data;
-        lastSentRef.current = JSON.stringify(row.data);
-        setDataState(row.data);
+        // O cliente gerado tipa a coluna como Json; a forma do blob e nossa.
+        const blob = row.data as unknown as DashboardState;
+        dataRef.current = blob;
+        lastSentRef.current = JSON.stringify(blob);
+        setDataState(blob);
       }
       setLoaded(true);
     })();
@@ -53,7 +55,8 @@ export function useDashboardState(scope = "default") {
   }, [scope]);
 
   const update = useCallback((updater: (prev: DashboardState) => DashboardState) => {
-    setDataState((prev: DashboardState) => {
+    setDataState((prev) => {
+      if (!prev) return prev;
       const next = updater(prev);
       dataRef.current = next;
       pendingRef.current = true;
@@ -64,7 +67,7 @@ export function useDashboardState(scope = "default") {
         lastSentRef.current = snapJson;
         await supabase
           .from("dashboard_state")
-          .update({ data: snap, updated_at: new Date().toISOString() })
+          .update({ data: snap as never, updated_at: new Date().toISOString() })
           .eq("id", ROW_ID);
         if (JSON.stringify(dataRef.current) === snapJson) pendingRef.current = false;
       }, 500);
