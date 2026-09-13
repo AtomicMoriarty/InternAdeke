@@ -33,6 +33,7 @@ const MODULOS_SELECIONAVEIS: [string, string][] = [
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { flattenDashboard, COLUMN_COLORS, type FlatCard } from "@/lib/flattenItems";
+import { parseBR } from "@/lib/relatorios";
 import { useNotifications, markRead, type Notification } from "@/lib/notifications";
 import { useProfiles } from "@/lib/profiles";
 
@@ -120,6 +121,48 @@ function EuPage() {
       .filter((card) => currentUser?.id && card.responsaveis?.includes(currentUser.id))
       .sort(compareCards);
   }, [data, currentUser?.id]);
+
+  /**
+   * Separa as tarefas por urgência.
+   *
+   * Uma lista plana com tudo junto esconde o que importa: numa rotina movida a
+   * prazo, o que está vencido precisa saltar aos olhos, e o que já foi entregue
+   * só polui. Finalizadas saem do caminho, mas continuam contadas.
+   */
+  const grupos = useMemo(() => {
+    const agora = new Date();
+    const g = {
+      vencidas: [] as FlatCard[],
+      hoje: [] as FlatCard[],
+      semana: [] as FlatCard[],
+      depois: [] as FlatCard[],
+      semPrazo: [] as FlatCard[],
+      finalizadas: [] as FlatCard[],
+    };
+    for (const card of myTasks) {
+      if (card.kanbanStatus === "Finalizado") {
+        g.finalizadas.push(card);
+        continue;
+      }
+      const prazo = parseBR(card.prazo);
+      if (!prazo) {
+        g.semPrazo.push(card);
+        continue;
+      }
+      const dias = Math.round(
+        (new Date(prazo.getFullYear(), prazo.getMonth(), prazo.getDate()).getTime() -
+          new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime()) /
+          86400000,
+      );
+      if (dias < 0) g.vencidas.push(card);
+      else if (dias === 0) g.hoje.push(card);
+      else if (dias <= 7) g.semana.push(card);
+      else g.depois.push(card);
+    }
+    return g;
+  }, [myTasks]);
+
+  const emAberto = myTasks.length - grupos.finalizadas.length;
 
   const unread = notifications.filter((n) => !n.lida);
   const updates = notifications.slice(0, 8);
@@ -210,16 +253,64 @@ function EuPage() {
           <SectionTitle
             icon={<User size={16} />}
             title="Minhas tarefas"
-            aside={`${myTasks.length} abertas`}
+            aside={`${emAberto} aberta${emAberto !== 1 ? "s" : ""}`}
           />
           {!loaded && <EmptyText>Carregando tarefas...</EmptyText>}
           {loaded && myTasks.length === 0 && (
             <EmptyText>Nenhuma tarefa atribuída a você por enquanto.</EmptyText>
           )}
+          {loaded && myTasks.length > 0 && emAberto === 0 && (
+            <EmptyText>Tudo em dia — nada em aberto atribuído a você.</EmptyText>
+          )}
+
+          {/* Contadores: o que exige atenção hoje, antes da lista */}
+          {emAberto > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {grupos.vencidas.length > 0 && (
+                <Contador
+                  n={grupos.vencidas.length}
+                  rotulo="vencida"
+                  cor="#DC2626"
+                  fundo="#FEF2F2"
+                />
+              )}
+              {grupos.hoje.length > 0 && (
+                <Contador
+                  n={grupos.hoje.length}
+                  rotulo="para hoje"
+                  cor="#F97316"
+                  fundo="#FFF7ED"
+                  plural={false}
+                />
+              )}
+              {grupos.semana.length > 0 && (
+                <Contador
+                  n={grupos.semana.length}
+                  rotulo="nesta semana"
+                  cor="#B45309"
+                  fundo="#FFFBEB"
+                  plural={false}
+                />
+              )}
+              {grupos.semPrazo.length > 0 && (
+                <Contador
+                  n={grupos.semPrazo.length}
+                  rotulo="sem prazo"
+                  cor="#64748B"
+                  fundo="#F8FAFC"
+                  plural={false}
+                />
+              )}
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {myTasks.map((card) => (
-              <TaskRow key={`${card.planoId}-${card.itemId}`} card={card} />
-            ))}
+            <GrupoTarefas titulo="Vencidas" cards={grupos.vencidas} cor="#DC2626" />
+            <GrupoTarefas titulo="Para hoje" cards={grupos.hoje} cor="#F97316" />
+            <GrupoTarefas titulo="Nesta semana" cards={grupos.semana} cor="#B45309" />
+            <GrupoTarefas titulo="Mais adiante" cards={grupos.depois} cor="#64748B" />
+            <GrupoTarefas titulo="Sem prazo" cards={grupos.semPrazo} cor="#94A3B8" />
+            <GrupoTarefas titulo="Finalizadas" cards={grupos.finalizadas} cor="#10B981" recolhido />
           </div>
         </section>
 
@@ -451,8 +542,110 @@ function TopBar({ displayName }: { displayName: string }) {
   );
 }
 
+/** Contador de urgência, exibido antes da lista. */
+function Contador({
+  n,
+  rotulo,
+  cor,
+  fundo,
+  plural = true,
+}: {
+  n: number;
+  rotulo: string;
+  cor: string;
+  fundo: string;
+  plural?: boolean;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "4px 10px",
+        borderRadius: 20,
+        background: fundo,
+        border: `1px solid ${cor}30`,
+        color: cor,
+        fontSize: 11,
+        fontWeight: 800,
+      }}
+    >
+      {n} {rotulo}
+      {plural && n !== 1 ? "s" : ""}
+    </span>
+  );
+}
+
+/**
+ * Um grupo de tarefas. Some quando vazio, para a tela não virar uma lista de
+ * cabeçalhos sem conteúdo. Finalizadas nascem recolhidas.
+ */
+function GrupoTarefas({
+  titulo,
+  cards,
+  cor,
+  recolhido = false,
+}: {
+  titulo: string;
+  cards: FlatCard[];
+  cor: string;
+  recolhido?: boolean;
+}) {
+  const [aberto, setAberto] = useState(!recolhido);
+  if (!cards.length) return null;
+  return (
+    <div>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          background: "none",
+          border: "none",
+          padding: "4px 0",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <span
+          style={{ width: 6, height: 6, borderRadius: "50%", background: cor, flexShrink: 0 }}
+        />
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            color: cor,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
+          {titulo}
+        </span>
+        <span style={{ fontSize: 11, color: "#94A3B8", fontWeight: 700 }}>{cards.length}</span>
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#CBD5E1" }}>
+          {aberto ? "ocultar" : "mostrar"}
+        </span>
+      </button>
+      {aberto && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+          {cards.map((card) => (
+            <TaskRow key={`${card.planoId}-${card.itemId}`} card={card} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TaskRow({ card }: { card: FlatCard }) {
   const color = COLUMN_COLORS[card.kanbanStatus] || "#64748B";
+  // Sinais que já estavam nos dados e a página não mostrava.
+  const parado = card.diasNoStatus !== null && card.diasNoStatus >= 7;
+  const temChecklist = card.subtotal > 0;
   return (
     <Link
       to="/"
@@ -483,7 +676,36 @@ function TaskRow({ card }: { card: FlatCard }) {
         </div>
       </div>
       <div style={{ textAlign: "right" }}>
-        <span style={{ fontSize: 10, color, fontWeight: 800 }}>{card.kanbanStatus}</span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            justifyContent: "flex-end",
+          }}
+        >
+          {temChecklist && (
+            <span
+              title={`Checklist: ${card.subdone} de ${card.subtotal}`}
+              style={{ fontSize: 10, color: "#94A3B8", fontWeight: 700 }}
+            >
+              {card.subdone}/{card.subtotal}
+            </span>
+          )}
+          {parado && (
+            <span
+              title={`Sem movimento há ${card.diasNoStatus} dias`}
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: card.diasNoStatus! >= 14 ? "#DC2626" : "#B45309",
+              }}
+            >
+              {card.diasNoStatus}d parado
+            </span>
+          )}
+          <span style={{ fontSize: 10, color, fontWeight: 800 }}>{card.kanbanStatus}</span>
+        </span>
         {card.prazo && (
           <div
             style={{
@@ -684,14 +906,22 @@ function LoadingScreen() {
   );
 }
 
+/**
+ * Ordena por prazo, com quem não tem prazo por último.
+ *
+ * O prazo é gravado como DD/MM/AAAA, e new Date() lê isso como MM/DD/AAAA: um
+ * prazo de 14/11 vira data inválida, e um de 05/03 vira 3 de maio em vez de 5
+ * de março — silenciosamente na ordem errada. parseBR entende o formato certo.
+ */
 function compareCards(a: FlatCard, b: FlatCard) {
-  const ad = a.prazo ? new Date(a.prazo).getTime() : Number.MAX_SAFE_INTEGER;
-  const bd = b.prazo ? new Date(b.prazo).getTime() : Number.MAX_SAFE_INTEGER;
+  const ad = parseBR(a.prazo)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const bd = parseBR(b.prazo)?.getTime() ?? Number.MAX_SAFE_INTEGER;
   return ad - bd;
 }
 
+/** Exibe a data. Aceita tanto DD/MM/AAAA quanto ISO. */
 function formatDate(value: string) {
-  const d = new Date(value);
+  const d = parseBR(value) || new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString("pt-BR", {
     day: "2-digit",
