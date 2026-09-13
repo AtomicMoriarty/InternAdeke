@@ -18,5 +18,10 @@
   "assets": {
     "directory": "dist/client",
     "binding": "ASSETS"
+  },
+  // Acompanhamento semanal do INPI. Cron do Cloudflare e sempre UTC; Brasilia
+  // e UTC-3, entao 12:00 UTC = 9h de segunda-feira aqui.
+  "triggers": {
+    "crons": ["0 12 * * 1"]
   }
 }

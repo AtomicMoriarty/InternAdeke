@@ -3,6 +3,7 @@ import "./lib/error-capture";
 import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -425,12 +426,65 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
+/**
+ * Acompanhamento semanal: le o estado, acrescenta os comentarios da semana e
+ * grava de volta. Roda pelo Cron Trigger, sem depender de alguem com o app
+ * aberto. Idempotente — disparar duas vezes na mesma semana nao duplica.
+ */
+async function rodarAcompanhamentoSemanal(env: any) {
+  const supabaseUrl = env?.SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return { ok: false, erro: "Faltam SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY no worker" };
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: row, error } = await supabase
+    .from("dashboard_state")
+    .select("data")
+    .eq("id", "main")
+    .maybeSingle();
+  if (error) return { ok: false, erro: error.message };
+  if (!row?.data) return { ok: false, erro: "dashboard_state vazio" };
+
+  const r = aplicarAcompanhamentoSemanal(row.data, new Date());
+  if (!r.comentariosCriados) {
+    return { ok: true, semana: r.semana, criados: 0, visitados: r.itensVisitados };
+  }
+
+  const { error: erroGravar } = await supabase
+    .from("dashboard_state")
+    .update({ data: r.data, updated_at: new Date().toISOString() })
+    .eq("id", "main");
+  if (erroGravar) return { ok: false, erro: erroGravar.message };
+
+  return { ok: true, semana: r.semana, criados: r.comentariosCriados, visitados: r.itensVisitados };
+}
+
 export default {
+  async scheduled(_event: unknown, env: any, ctx: any) {
+    const r = await rodarAcompanhamentoSemanal(env);
+    console.log("[acompanhamento semanal]", JSON.stringify(r));
+  },
+
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const url = new URL(request.url);
       if (url.pathname === "/api/granola-risk") {
         return await handleGranolaRisk(request, env);
+      }
+      // Disparo manual, para conferir sem esperar a segunda-feira. Protegido
+      // pelo mesmo segredo do webhook do Granola.
+      if (url.pathname === "/api/acompanhamento-semanal") {
+        const segredo = (env as any)?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
+        const enviado = url.searchParams.get("secret") || request.headers.get("x-webhook-secret");
+        if (!segredo || enviado !== segredo) {
+          return apiJson({ error: "Nao autorizado" }, { status: 401 });
+        }
+        return apiJson(await rodarAcompanhamentoSemanal(env));
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
