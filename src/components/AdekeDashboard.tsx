@@ -46,6 +46,8 @@ import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
 import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
+const AREA_ICONS = { shield: Shield, lock: Lock, stamp: Stamp, scale: Scale, handshake: Handshake };
+
 function moduloOf(areaId) {
   return moduloOfArea(areaId);
 }
@@ -1118,7 +1120,7 @@ function Dashboard({ data, setData, nav, allowedModules = ALL_MODULES }) {
           .filter((area) => allowedModules.includes(area.id))
           .map((area) => {
             const { total: t, done: d, pct } = areaProg(area);
-            const AIcon = area.id === "compliance" ? Shield : Lock;
+            const AIcon = AREA_ICONS[AREAS.find((x) => x.id === area.id)?.icon] || Shield;
             return (
               <button
                 key={area.id}
@@ -1427,7 +1429,7 @@ function AreaView({ areaId, data, setData, nav }) {
   const me = useCurrentUser();
   const profiles = useProfiles();
   const currentProfile = me ? profiles.find((p) => p.id === me.id) : null;
-  const AIcon = areaId === "compliance" ? Shield : Lock;
+  const AIcon = AREA_ICONS[AREAS.find((x) => x.id === areaId)?.icon] || Shield;
 
   const { total, done, pct } = areaProg(area);
 
@@ -5542,7 +5544,7 @@ export default function App() {
   useEffect(() => {
     function handler(e) {
       const d = e.detail || {};
-      const areaId = d.modulo === "LGPD" ? "lgpd" : d.modulo === "Compliance" ? "compliance" : null;
+      const areaId = AREAS.find((a) => a.modulo === d.modulo)?.id || null;
       if (!areaId || !d.cliente) return;
       if (!allowedModules.includes(areaId)) return;
       if (d.plano) setView({ page: "plano", areaId, clienteId: d.cliente, planoId: d.plano });

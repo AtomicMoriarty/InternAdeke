@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { AREA_IDS } from "@/lib/areas";
+
+/** Por padrao a pessoa ve todos os quadros; um quadro novo entra aqui sozinho. */
+export const DEFAULT_ALLOWED_MODULES = [...AREA_IDS, "produtos"];
 
 export type Profile = {
   id: string;
@@ -27,7 +31,7 @@ function normalizeProfile(profile: Partial<Profile>): Profile {
     access_enabled: profile.access_enabled ?? true,
     allowed_modules: Array.isArray(profile.allowed_modules)
       ? profile.allowed_modules
-      : ["compliance", "lgpd", "produtos"],
+      : DEFAULT_ALLOWED_MODULES,
   };
 }
 

@@ -18,6 +18,14 @@ import {
   User,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { AREAS } from "@/lib/areas";
+import { DEFAULT_ALLOWED_MODULES } from "@/lib/profiles";
+
+/** Quadros que podem ser liberados por pessoa, mais o pseudo-modulo Produtos. */
+const MODULOS_SELECIONAVEIS: [string, string][] = [
+  ...AREAS.map((a) => [a.id, a.modulo] as [string, string]),
+  ["produtos", "Produtos"],
+];
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { flattenDashboard, COLUMN_COLORS, type FlatCard } from "@/lib/flattenItems";
@@ -132,7 +140,7 @@ function EuPage() {
   function toggleModule(profile: any, moduleId: string) {
     const current = Array.isArray(profile.allowed_modules)
       ? profile.allowed_modules
-      : ["compliance", "lgpd", "produtos"];
+      : DEFAULT_ALLOWED_MODULES;
     const next = current.includes(moduleId)
       ? current.filter((id: string) => id !== moduleId)
       : [...current, moduleId];
@@ -372,13 +380,9 @@ function EuPage() {
                       justifyContent: "flex-end",
                     }}
                   >
-                    {[
-                      ["compliance", "Compliance"],
-                      ["lgpd", "LGPD"],
-                      ["produtos", "Produtos"],
-                    ].map(([id, label]) => {
+                    {MODULOS_SELECIONAVEIS.map(([id, label]) => {
                       const allowed = (
-                        profile.allowed_modules || ["compliance", "lgpd", "produtos"]
+                        profile.allowed_modules || DEFAULT_ALLOWED_MODULES
                       ).includes(id);
                       return (
                         <button

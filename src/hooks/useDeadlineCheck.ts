@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { moduloOf } from "@/lib/areas";
 
 function parsePrazo(prazo: string): Date | null {
   const br = prazo.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/);
@@ -34,7 +35,7 @@ async function checkDeadlines(data: any, currentUser: { id: string; email: strin
   const today = todayKey();
 
   for (const area of data.areas || []) {
-    const modulo = area.id === "lgpd" ? "LGPD" : "Compliance";
+    const modulo = moduloOf(area.id);
     for (const cliente of area.clientes || []) {
       for (const plano of cliente.planos || []) {
         for (const item of plano.items || []) {

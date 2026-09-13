@@ -122,7 +122,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   }
 
   function openCard(card: FlatCard) {
-    if (card.areaId === "produtos") return;
+    // Produtos abrem normalmente: o ItemModal sabe ler data.produtos.
     setModalItem({
       areaId: card.areaId,
       clienteId: card.clienteId,

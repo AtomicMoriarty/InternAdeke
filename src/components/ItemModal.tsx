@@ -26,6 +26,7 @@ import {
 } from "@/lib/notifications";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
+import { moduloOf } from "@/lib/areas";
 
 const KANBAN_COLUMNS = [
   "A Fazer",
@@ -76,9 +77,9 @@ function todayBR() {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
-function moduloOf(areaId: string) {
-  return areaId === "lgpd" ? "LGPD" : "Compliance";
-}
+const MODULO_PRODUTOS = "Produtos";
+/** id sintetico: produtos moram em data.produtos, nao em data.areas */
+const PRODUTOS_AREA_ID = "produtos";
 function timeAgo(iso: string) {
   if (!iso) return "";
   const ms = Date.now() - new Date(iso).getTime();
@@ -213,13 +214,24 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }, [showStatusMenu]);
 
   if (!data) return null;
-  const area = data.areas?.find((a: any) => a.id === areaId);
-  const cliente = area?.clientes?.find((c: any) => c.id === clienteId);
-  const plano = cliente?.planos?.find((p: any) => p.id === planoId);
-  const item = plano?.items?.find((it: any) => it.id === itemId);
+
+  // Um produto guarda seus itens num nivel so, entao faz papel de cliente e de
+  // plano ao mesmo tempo.
+  const ehProduto = areaId === PRODUTOS_AREA_ID;
+  const produto = ehProduto ? data.produtos?.find((p: any) => p.id === clienteId) : null;
+
+  const area = ehProduto
+    ? { id: PRODUTOS_AREA_ID, name: MODULO_PRODUTOS }
+    : data.areas?.find((a: any) => a.id === areaId);
+  const cliente = ehProduto ? produto : area?.clientes?.find((c: any) => c.id === clienteId);
+  const plano = ehProduto ? produto : cliente?.planos?.find((p: any) => p.id === planoId);
+  const item = ehProduto
+    ? produto?.items?.find((it: any) => it.id === itemId)
+    : plano?.items?.find((it: any) => it.id === itemId);
+
   if (!item || !plano || !cliente || !area) return null;
 
-  const modulo = moduloOf(areaId);
+  const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
   const kanbanStatus: KanbanStatus = item.kanbanStatus || "A Fazer";
   const statusColor = STATUS_COLORS[kanbanStatus] || "#64748B";
   const checklist: any[] = item.checklist || [];
@@ -244,6 +256,22 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   };
 
   function patchItem(patch: any) {
+    if (ehProduto) {
+      update((prev: any) => ({
+        ...prev,
+        produtos: (prev.produtos || []).map((p: any) =>
+          p.id !== clienteId
+            ? p
+            : {
+                ...p,
+                items: (p.items || []).map((it: any) =>
+                  it.id !== itemId ? it : { ...it, ...patch },
+                ),
+              },
+        ),
+      }));
+      return;
+    }
     update((prev: any) => ({
       ...prev,
       areas: prev.areas.map((a: any) =>
