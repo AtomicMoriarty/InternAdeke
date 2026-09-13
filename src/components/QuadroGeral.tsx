@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef } from "react";
-import { Filter, X, Calendar, MessageSquare, GripVertical } from "lucide-react";
+import { Filter, X, Calendar, MessageSquare, GripVertical, CalendarClock } from "lucide-react";
 import ItemModal from "@/components/ItemModal";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
@@ -349,7 +349,12 @@ function KanbanCard({
         >
           {card.clienteNome}
         </span>
-        <GripVertical size={12} color="#CBD5E1" style={{ marginLeft: "auto" }} />
+        {card.acompanhado && (
+          <span title="Acompanhamento semanal ligado" style={{ marginLeft: "auto", display: "inline-flex" }}>
+            <CalendarClock size={12} color="#0DD3C5" />
+          </span>
+        )}
+        <GripVertical size={12} color="#CBD5E1" style={{ marginLeft: card.acompanhado ? 4 : "auto" }} />
       </div>
 
       <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0F172A", lineHeight: 1.35 }}>

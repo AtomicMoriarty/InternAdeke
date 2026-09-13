@@ -27,6 +27,7 @@ import {
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import { moduloOf } from "@/lib/areas";
+import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
 
 const KANBAN_COLUMNS = [
   "A Fazer",
@@ -238,6 +239,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
+  const acompanhando = temAcompanhamento(item);
   const allActivity: any[] = (item.comentarios || [])
     .slice()
     .sort((a: any, b: any) => (a.created_at || "").localeCompare(b.created_at || ""));
@@ -753,6 +755,63 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Acompanhamento semanal: opt-in por card, para o registro
+                  automatico aparecer so onde alguem esta de olho. */}
+              <div>
+                <Label>Acompanhar</Label>
+                <button
+                  onClick={() => patchItem({ acompanhamentoSemanal: !acompanhando })}
+                  title={
+                    acompanhando
+                      ? "Toda segunda o sistema registra um comentário com a situação deste card"
+                      : "Ligar para receber um comentário automático toda segunda"
+                  }
+                  style={{
+                    marginTop: 5,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    border: `1.5px solid ${acompanhando ? "#0DD3C5" : "#E2E8F0"}`,
+                    background: acompanhando ? "#F0FDFA" : "#F8FAFC",
+                    color: acompanhando ? "#0F766E" : "#64748B",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 26,
+                      height: 15,
+                      borderRadius: 999,
+                      background: acompanhando ? "#0DD3C5" : "#CBD5E1",
+                      position: "relative",
+                      flexShrink: 0,
+                      transition: "background .15s",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 2,
+                        left: acompanhando ? 13 : 2,
+                        width: 11,
+                        height: 11,
+                        borderRadius: "50%",
+                        background: "#fff",
+                        transition: "left .15s",
+                      }}
+                    />
+                  </span>
+                  Semanal
+                </button>
               </div>
 
               {(item.responsaveis || []).length > 0 && (

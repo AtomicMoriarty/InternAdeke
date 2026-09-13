@@ -19,6 +19,7 @@ export type FlatCard = {
   progresso: number; // 0-100
   subtotal: number;
   subdone: number;
+  acompanhado: boolean; // acompanhamento semanal ligado neste card
 };
 
 export const KANBAN_COLUMNS = [
@@ -100,6 +101,7 @@ export function flattenDashboard(data: any): FlatCard[] {
             progresso,
             subtotal: subs.length,
             subdone,
+            acompanhado: item.acompanhamentoSemanal === true,
           });
         }
       }
@@ -134,6 +136,7 @@ export function flattenDashboard(data: any): FlatCard[] {
         progresso,
         subtotal: subs.length,
         subdone,
+        acompanhado: item.acompanhamentoSemanal === true,
       });
     }
   }

@@ -4,24 +4,30 @@
 // Para cada item em aberto das áreas configuradas, posta um comentário com a
 // situação da semana: status, há quanto tempo está parado e como anda o prazo.
 //
-// Pensado para o controle do INPI, onde o valor está em ter registro semanal
-// mesmo quando nada mudou — é justamente o "nada mudou há 3 semanas" que
-// precisa saltar aos olhos.
+// Vale por card, nao por area: quem acompanha liga no card que quer seguir de
+// perto. Assim o registro semanal aparece onde importa — tipicamente processos
+// do INPI, onde o valor esta em ver "nada mudou ha 3 semanas" — sem encher de
+// ruido os cards que ninguem esta monitorando.
+//
+// Desligado por padrao. Um card so entra quando alguem liga.
 
-import { AREA_IDS } from "@/lib/areas";
+/** Campo do item que liga o acompanhamento. */
+export const CAMPO_ACOMPANHAMENTO = "acompanhamentoSemanal";
 
-/** Áreas que recebem o acompanhamento. Vazio desliga a automação. */
-export const AREAS_COM_ACOMPANHAMENTO = AREA_IDS;
+/** O card esta marcado para acompanhamento? */
+export function temAcompanhamento(item: any): boolean {
+  return item?.[CAMPO_ACOMPANHAMENTO] === true;
+}
 
 /**
  * Quantos acompanhamentos manter por item.
  *
- * Sem teto isto cresce para sempre: 25 itens semanais dão ~1.300 comentários e
- * 250 KB por ano, num JSON que é carregado inteiro a cada abertura do app — e
- * piora conforme entram clientes. Oito semanas bastam para enxergar "parado há
- * um mês" sem pesar. Comentários escritos por pessoas nunca são removidos.
+ * O teto existe porque o dashboard_state e carregado inteiro a cada abertura do
+ * app, e comentario semanal cresce para sempre. Como agora e opt-in por card,
+ * sao poucos cards e da para guardar mais historico: doze semanas, cerca de tres
+ * meses. Comentario escrito por pessoa nunca e removido.
  */
-export const MAX_ACOMPANHAMENTOS_POR_ITEM = 8;
+export const MAX_ACOMPANHAMENTOS_POR_ITEM = 12;
 
 const DIA_MS = 86400000;
 
@@ -128,7 +134,7 @@ export function podarAcompanhamentos(
 export type ResultadoAcompanhamento = {
   data: any;
   comentariosCriados: number;
-  itensVisitados: number;
+  itensVisitados: number; // cards com acompanhamento ligado
   semana: string;
 };
 
@@ -141,19 +147,16 @@ export type ResultadoAcompanhamento = {
 export function aplicarAcompanhamentoSemanal(
   data: any,
   agora: Date = new Date(),
-  areas: string[] = AREAS_COM_ACOMPANHAMENTO,
 ): ResultadoAcompanhamento {
   const semana = chaveDaSemana(agora);
   let criados = 0;
   let visitados = 0;
 
-  if (!data?.areas || !areas.length) {
+  if (!data?.areas) {
     return { data, comentariosCriados: 0, itensVisitados: 0, semana };
   }
 
   const novasAreas = data.areas.map((area: any) => {
-    if (!areas.includes(area.id)) return area;
-
     return {
       ...area,
       clientes: (area.clientes || []).map((cliente: any) => ({
@@ -161,6 +164,7 @@ export function aplicarAcompanhamentoSemanal(
         planos: (cliente.planos || []).map((plano: any) => ({
           ...plano,
           items: (plano.items || []).map((item: any) => {
+            if (!temAcompanhamento(item)) return item;
             visitados++;
             if (jaTemDaSemana(item, semana)) return item;
 
