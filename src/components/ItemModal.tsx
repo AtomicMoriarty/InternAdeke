@@ -1,47 +1,85 @@
 // @ts-nocheck
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  X, Check, Plus, Calendar, Users, Paperclip,
-  ChevronDown, Maximize2, Eye, MoreHorizontal,
+  X,
+  Check,
+  Plus,
+  Calendar,
+  Users,
+  Paperclip,
+  Tag,
+  Edit3,
+  Trash2,
+  ChevronDown,
+  Maximize2,
+  Eye,
+  MoreHorizontal,
 } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import {
-  emitNotifications, emitAtribuicao, emitMudancaStatus,
+  emitNotifications,
+  emitAtribuicao,
+  emitMudancaStatus,
   type NotifContext,
 } from "@/lib/notifications";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
-import { moduloOf, MODULO_PRODUTOS } from "@/lib/areas";
-import { diasDesde, PRODUTOS_AREA_ID } from "@/lib/flattenItems";
 
-const STATUS_OPTIONS = [
-  "A Fazer", "Em Andamento", "Pendência Interna",
-  "Pendência Cliente", "Monitoramento", "Finalizado", "Suspenso",
-];
+const KANBAN_COLUMNS = [
+  "A Fazer",
+  "Em Andamento",
+  "Pendência Interna",
+  "Pendência Cliente",
+  "Monitoramento",
+  "Finalizado",
+  "Suspenso",
+] as const;
+type KanbanStatus = (typeof KANBAN_COLUMNS)[number];
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   "A Fazer": "#64748B",
   "Em Andamento": "#3B82F6",
   "Pendência Interna": "#F59E0B",
   "Pendência Cliente": "#F97316",
-  "Monitoramento": "#06B6D4",
-  "Finalizado": "#10B981",
-  "Suspenso": "#94A3B8",
+  Monitoramento: "#06B6D4",
+  Finalizado: "#10B981",
+  Suspenso: "#94A3B8",
 };
 
 const ETIQUETA_COLORS = [
-  "#EF4444", "#F97316", "#F59E0B", "#10B981",
-  "#06B6D4", "#3B82F6", "#8B5CF6", "#EC4899", "#0DD3C5", "#64748B",
+  "#EF4444",
+  "#F97316",
+  "#F59E0B",
+  "#10B981",
+  "#06B6D4",
+  "#3B82F6",
+  "#8B5CF6",
+  "#EC4899",
+  "#0DD3C5",
+  "#64748B",
 ];
 
-function uid() { return `_${Math.random().toString(36).slice(2, 9)}`; }
+const DEADLINE_ALERT_OPTIONS = [
+  { value: "0", label: "No horário" },
+  { value: "1", label: "1 dia antes" },
+  { value: "3", label: "3 dias antes" },
+  { value: "7", label: "7 dias antes" },
+  { value: "14", label: "14 dias antes" },
+];
+
+function uid() {
+  return `_${Math.random().toString(36).slice(2, 9)}`;
+}
 function todayBR() {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
-function timeAgo(iso) {
+function moduloOf(areaId: string) {
+  return areaId === "lgpd" ? "LGPD" : "Compliance";
+}
+function timeAgo(iso: string) {
   if (!iso) return "";
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.round(ms / 60000);
@@ -52,8 +90,40 @@ function timeAgo(iso) {
   return `${Math.round(h / 24)}d`;
 }
 
-export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose }) {
-  const { data, update } = useDashboardState();
+function prazoToInputValue(prazo: string) {
+  if (!prazo) return "";
+  const br = prazo.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/);
+  if (br) {
+    return `${br[3]}-${br[2]}-${br[1]}T${br[4] || "09"}:${br[5] || "00"}`;
+  }
+  const d = new Date(prazo);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatPrazoLabel(prazo: string) {
+  const d = new Date(prazo);
+  if (!prazo || Number.isNaN(d.getTime())) return prazo || "Sem deadline";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+type Props = {
+  areaId: string;
+  clienteId: string;
+  planoId: string;
+  itemId: string;
+  onClose: () => void;
+};
+
+export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose }: Props) {
+  const { data, update } = useDashboardState("modal");
   const currentUser = useCurrentUser();
   const profiles = useProfiles();
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
@@ -66,31 +136,58 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const [showCheckForm, setShowCheckForm] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [showMembros, setShowMembros] = useState(false);
-  const overlayRef = useRef(null);
-  const modalRef = useRef(null);
-  const statusMenuRef = useRef(null);
-  // Guarda quem abriu o modal, para devolver o foco ao fechar
-  const openerRef = useRef(typeof document !== "undefined" ? document.activeElement : null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showAnexoForm, setShowAnexoForm] = useState(false);
+  const [newAnexoName, setNewAnexoName] = useState("");
+  const [newAnexoUrl, setNewAnexoUrl] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+  const prazoRef = useRef<HTMLInputElement>(null);
+  // Store the element that triggered the modal so we can restore focus on close
+  const openerRef = useRef<Element | null>(
+    typeof document !== "undefined" ? document.activeElement : null,
+  );
 
-  // Foco automatico, ESC e armadilha de foco (Tab nao escapa do modal)
+  // Auto-focus modal and handle ESC + focus trap
   useEffect(() => {
     const openerEl = openerRef.current;
-    if (modalRef.current) modalRef.current.focus();
 
-    function onKey(e) {
-      if (e.key === "Escape") { onClose(); return; }
+    // Auto-focus the modal container
+    if (modalRef.current) {
+      modalRef.current.focus();
+    }
 
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      // Focus trap: keep Tab/Shift+Tab inside the modal
       if (e.key === "Tab" && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll(
-          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
         );
-        if (!focusable.length) { e.preventDefault(); return; }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
+        if (!focusable.length) {
+          e.preventDefault();
+          return;
+        }
+
         if (e.shiftKey) {
-          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
         } else {
-          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
         }
       }
     }
@@ -98,13 +195,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      if (openerEl && typeof openerEl.focus === "function") openerEl.focus();
+      // Restore focus to the element that opened the modal
+      if (openerEl && typeof (openerEl as HTMLElement).focus === "function") {
+        (openerEl as HTMLElement).focus();
+      }
     };
   }, [onClose]);
 
   useEffect(() => {
-    function onDoc(e) {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target)) {
+    function onDoc(e: MouseEvent) {
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
         setShowStatusMenu(false);
       }
     }
@@ -113,78 +213,79 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }, [showStatusMenu]);
 
   if (!data) return null;
-
-  // Itens de produto ficam em data.produtos, um nivel acima dos itens de area.
-  // O produto faz o papel de cliente e de plano ao mesmo tempo.
-  const ehProduto = areaId === PRODUTOS_AREA_ID;
-  const produto = ehProduto ? data.produtos?.find((p) => p.id === clienteId) : null;
-
-  const area    = ehProduto ? { id: PRODUTOS_AREA_ID, name: MODULO_PRODUTOS } : data.areas?.find((a) => a.id === areaId);
-  const cliente = ehProduto ? produto : area?.clientes?.find((c) => c.id === clienteId);
-  const plano   = ehProduto ? produto : cliente?.planos?.find((p) => p.id === planoId);
-  const item    = ehProduto
-    ? produto?.items?.find((it) => it.id === itemId)
-    : plano?.items?.find((it) => it.id === itemId);
-
+  const area = data.areas?.find((a: any) => a.id === areaId);
+  const cliente = area?.clientes?.find((c: any) => c.id === clienteId);
+  const plano = cliente?.planos?.find((p: any) => p.id === planoId);
+  const item = plano?.items?.find((it: any) => it.id === itemId);
   if (!item || !plano || !cliente || !area) return null;
 
-  const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
-  const status = item.kanbanStatus || "A Fazer";
-  const diasNoStatus = diasDesde(item.statusChangedAt);
-  const statusColor = STATUS_COLORS[status] || "#64748B";
-  const checklist = item.checklist || [];
+  const modulo = moduloOf(areaId);
+  const kanbanStatus: KanbanStatus = item.kanbanStatus || "A Fazer";
+  const statusColor = STATUS_COLORS[kanbanStatus] || "#64748B";
+  const checklist: any[] = item.checklist || [];
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
-  const atividade = (item.comentarios || [])
+  const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
+  const allActivity: any[] = (item.comentarios || [])
     .slice()
-    .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    .sort((a: any, b: any) => (a.created_at || "").localeCompare(b.created_at || ""));
 
   const ctx: NotifContext = {
-    cliente_id: clienteId, cliente_nome: cliente.name,
-    modulo, plano_id: planoId, plano_nome: plano.name,
-    item_id: itemId, item_nome: item.name,
+    cliente_id: clienteId,
+    cliente_nome: cliente.name,
+    modulo,
+    plano_id: planoId,
+    plano_nome: plano.name,
+    item_id: itemId,
+    item_nome: item.name,
     autor_id: currentUser?.id || null,
     autor_nome: currentProfile?.display_name || currentUser?.email || "sistema",
     trecho: "",
   };
 
-  function patchItem(patch) {
-    if (ehProduto) {
-      update((prev) => ({
-        ...prev,
-        produtos: (prev.produtos || []).map((p) => p.id !== clienteId ? p : {
-          ...p,
-          items: (p.items || []).map((it) => it.id !== itemId ? it : { ...it, ...patch }),
-        }),
-      }));
-      return;
-    }
-    update((prev) => ({
+  function patchItem(patch: any) {
+    update((prev: any) => ({
       ...prev,
-      areas: (prev.areas || []).map((a) => a.id !== areaId ? a : {
-        ...a,
-        clientes: (a.clientes || []).map((c) => c.id !== clienteId ? c : {
-          ...c,
-          planos: (c.planos || []).map((p) => p.id !== planoId ? p : {
-            ...p,
-            items: (p.items || []).map((it) => it.id !== itemId ? it : { ...it, ...patch }),
-          }),
-        }),
-      }),
+      areas: prev.areas.map((a: any) =>
+        a.id !== areaId
+          ? a
+          : {
+              ...a,
+              clientes: a.clientes.map((c: any) =>
+                c.id !== clienteId
+                  ? c
+                  : {
+                      ...c,
+                      planos: c.planos.map((p: any) =>
+                        p.id !== planoId
+                          ? p
+                          : {
+                              ...p,
+                              items: p.items.map((it: any) =>
+                                it.id !== itemId ? it : { ...it, ...patch },
+                              ),
+                            },
+                      ),
+                    },
+              ),
+            },
+      ),
     }));
   }
 
-  function changeStatus(s) {
-    if (s === status) { setShowStatusMenu(false); return; }
-    const agora = new Date().toISOString();
-    patchItem({
-      kanbanStatus: s,
-      statusChangedAt: agora,
-      statusHistory: [
-        ...(Array.isArray(item.statusHistory) ? item.statusHistory : []),
-        { de: status, para: s, em: agora },
-      ].slice(-50),
-    });
+  // Legacy status map so existing code that reads item.status still works
+  const LEGACY_STATUS_MAP: Record<KanbanStatus, string> = {
+    "A Fazer": "Não iniciado",
+    "Em Andamento": "Em andamento",
+    "Pendência Interna": "Planejamento",
+    "Pendência Cliente": "Pausado",
+    Monitoramento: "Em andamento",
+    Finalizado: "Concluído",
+    Suspenso: "Pausado",
+  };
+
+  function changeStatus(s: KanbanStatus) {
+    patchItem({ kanbanStatus: s, status: LEGACY_STATUS_MAP[s] });
     setShowStatusMenu(false);
     emitMudancaStatus({
       responsibleIds: item.responsaveis || [],
@@ -193,21 +294,29 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     });
   }
 
-  function changeResponsaveis(ids) {
+  function changeResponsaveis(ids: string[]) {
     const old = item.responsaveis || [];
     patchItem({ responsaveis: ids });
-    emitAtribuicao({ newIds: ids, oldIds: old, ctx: { ...ctx, trecho: "foi atribuído(a) ao item" } });
+    emitAtribuicao({
+      newIds: ids,
+      oldIds: old,
+      ctx: { ...ctx, trecho: "foi atribuído(a) ao item" },
+    });
     setShowMembros(false);
   }
 
   function addComment() {
     const txt = commentDraft.trim();
     if (!txt) return;
-    const meName = currentProfile?.display_name || currentUser?.email || "Usuário";
+    const meName = currentProfile?.display_name || "Usuário";
     const entry = {
-      id: `cm${uid()}`, tipo: "comentario",
-      date: todayBR(), created_at: new Date().toISOString(),
-      text: txt, autor_id: currentUser?.id || null, autor_nome: meName,
+      id: `cm${uid()}`,
+      tipo: "comentario",
+      date: todayBR(),
+      created_at: new Date().toISOString(),
+      text: txt,
+      autor_id: currentUser?.id || null,
+      autor_nome: meName,
     };
     patchItem({ comentarios: [...(item.comentarios || []), entry] });
     setCommentDraft("");
@@ -221,6 +330,50 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     }
   }
 
+  function startEditComment(comment: any) {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.text || "");
+  }
+
+  function saveCommentEdit() {
+    const txt = editingCommentText.trim();
+    if (!editingCommentId || !txt) return;
+    patchItem({
+      comentarios: (item.comentarios || []).map((c: any) =>
+        c.id === editingCommentId ? { ...c, text: txt, updated_at: new Date().toISOString() } : c,
+      ),
+    });
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  }
+
+  function deleteComment(id: string) {
+    patchItem({ comentarios: (item.comentarios || []).filter((c: any) => c.id !== id) });
+  }
+
+  function addAnexo() {
+    const url = newAnexoUrl.trim();
+    if (!url) return;
+    patchItem({
+      anexos: [
+        ...(item.anexos || []),
+        {
+          id: `an${uid()}`,
+          name: newAnexoName.trim() || url,
+          url,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+    setNewAnexoName("");
+    setNewAnexoUrl("");
+    setShowAnexoForm(false);
+  }
+
+  function removeAnexo(id: string) {
+    patchItem({ anexos: (item.anexos || []).filter((a: any) => a.id !== id) });
+  }
+
   function addCheckItem() {
     const txt = newCheckItem.trim();
     if (!txt) return;
@@ -228,119 +381,313 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     setNewCheckItem("");
   }
 
-  function toggleCheck(id) {
-    patchItem({ checklist: checklist.map((ck) => ck.id !== id ? ck : { ...ck, done: !ck.done }) });
+  function toggleCheck(id: string) {
+    patchItem({
+      checklist: checklist.map((ck) => (ck.id !== id ? ck : { ...ck, done: !ck.done })),
+    });
   }
 
-  function deleteCheck(id) {
+  function deleteCheck(id: string) {
     patchItem({ checklist: checklist.filter((ck) => ck.id !== id) });
   }
 
   function addEtiqueta() {
     if (!newEtiquetaLabel.trim()) return;
     patchItem({
-      etiquetas: [...(item.etiquetas || []), { id: `et${uid()}`, label: newEtiquetaLabel.trim(), color: newEtiquetaColor }],
+      etiquetas: [
+        ...(item.etiquetas || []),
+        { id: `et${uid()}`, label: newEtiquetaLabel.trim(), color: newEtiquetaColor },
+      ],
     });
     setNewEtiquetaLabel("");
     setShowEtiquetaForm(false);
   }
 
-  function removeEtiqueta(id) {
-    patchItem({ etiquetas: (item.etiquetas || []).filter((e) => e.id !== id) });
+  function removeEtiqueta(id: string) {
+    patchItem({ etiquetas: (item.etiquetas || []).filter((e: any) => e.id !== id) });
   }
 
   return (
     <div
       ref={overlayRef}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      onClick={(e) => {
+        if (e.target === overlayRef.current) onClose();
+      }}
       style={{
-        position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 2000,
-        display: "flex", alignItems: "flex-start", justifyContent: "center",
-        padding: "48px 20px 20px", overflowY: "auto", fontFamily: "Outfit, sans-serif",
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.6)",
+        zIndex: 2000,
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "48px 20px 20px",
+        overflowY: "auto",
+        fontFamily: "Outfit, sans-serif",
       }}
     >
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Detalhes do item: ${item.name}`}
+        aria-label={item?.name || "Item"}
         tabIndex={-1}
         style={{
-          background: "#fff", borderRadius: 16, width: "100%", maxWidth: 880,
-          boxShadow: "0 24px 80px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column",
+          background: "#fff",
+          borderRadius: 16,
+          width: "100%",
+          maxWidth: 880,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.3)",
+          display: "flex",
+          flexDirection: "column",
           outline: "none",
-        }}>
-        {/* ── Cabeçalho ── */}
-        <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid #F1F5F9", display: "flex", alignItems: "flex-start", gap: 12 }}>
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "18px 20px 14px",
+            borderBottom: "1px solid #F1F5F9",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#94A3B8",
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                marginBottom: 6,
+              }}
+            >
               {plano.name}
             </div>
             <input
               value={item.name}
               onChange={(e) => patchItem({ name: e.target.value })}
               style={{
-                width: "100%", background: "none", border: "none", outline: "none",
-                fontSize: 20, fontWeight: 900, color: "#0F172A", fontFamily: "inherit", padding: 0,
+                width: "100%",
+                background: "none",
+                border: "none",
+                outline: "none",
+                fontSize: 20,
+                fontWeight: 900,
+                color: "#0F172A",
+                fontFamily: "inherit",
+                padding: 0,
               }}
             />
           </div>
-          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, paddingTop: 4 }}>
-            <button title="Maximizar" style={iconBtn}><Maximize2 size={15} color="#94A3B8" /></button>
-            <button title="Visualizar" style={iconBtn}><Eye size={15} color="#94A3B8" /></button>
-            <button title="Opções" style={iconBtn}><MoreHorizontal size={15} color="#94A3B8" /></button>
-            <button onClick={onClose} title="Fechar" style={{ ...iconBtn, marginLeft: 4 }}><X size={17} color="#475569" /></button>
+          <div
+            style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, paddingTop: 4 }}
+          >
+            <button title="Maximizar" style={iconBtn}>
+              <Maximize2 size={15} color="#94A3B8" />
+            </button>
+            <button title="Visualizar" style={iconBtn}>
+              <Eye size={15} color="#94A3B8" />
+            </button>
+            <button title="Opções" style={iconBtn}>
+              <MoreHorizontal size={15} color="#94A3B8" />
+            </button>
+            <button onClick={onClose} style={{ ...iconBtn, marginLeft: 4 }} title="Fechar">
+              <X size={17} color="#475569" />
+            </button>
           </div>
         </div>
 
+        {/* Body */}
         <div style={{ display: "flex", minHeight: 480 }}>
-          {/* ── Coluna esquerda ── */}
-          <div style={{ flex: 1, padding: "20px 24px", overflowY: "auto", borderRight: "1px solid #F1F5F9" }}>
-
+          {/* ── Left column ── */}
+          <div
+            style={{
+              flex: 1,
+              padding: "20px 24px",
+              overflowY: "auto",
+              borderRight: "1px solid #F1F5F9",
+            }}
+          >
+            {/* Action buttons */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 22 }}>
-              <ActionBtn icon={<Plus size={12} />} label="Adicionar" onClick={() => setShowCheckForm(true)} />
-              <ActionBtn icon={<Calendar size={12} />} label="Datas" onClick={() => {}} active={!!item.prazo} />
-              <ActionBtn icon={<Check size={12} />} label="Checklist" onClick={() => setShowCheckForm(true)} active={checklist.length > 0} />
               <div style={{ position: "relative" }}>
-                <ActionBtn icon={<Users size={12} />} label="Membros" onClick={() => setShowMembros((o) => !o)} active={(item.responsaveis || []).length > 0} />
-                {showMembros && (
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 300 }}>
-                    <ResponsaveisPicker value={item.responsaveis || []} onChange={changeResponsaveis} />
+                <ActionBtn
+                  icon={<Plus size={12} />}
+                  label="Adicionar"
+                  onClick={() => setShowQuickAdd((o) => !o)}
+                />
+                {showQuickAdd && (
+                  <div style={floatingMenuStyle}>
+                    <QuickAddButton
+                      icon={<Users size={12} />}
+                      label="Membros"
+                      onClick={() => {
+                        setShowMembros(true);
+                        setShowQuickAdd(false);
+                      }}
+                    />
+                    <QuickAddButton
+                      icon={<Calendar size={12} />}
+                      label="Data"
+                      onClick={() => {
+                        setShowQuickAdd(false);
+                        prazoRef.current?.focus();
+                      }}
+                    />
+                    <QuickAddButton
+                      icon={<Tag size={12} />}
+                      label="Etiqueta"
+                      onClick={() => {
+                        setShowEtiquetaForm(true);
+                        setShowQuickAdd(false);
+                      }}
+                    />
+                    <QuickAddButton
+                      icon={<Check size={12} />}
+                      label="Checklist"
+                      onClick={() => {
+                        setShowCheckForm(true);
+                        setShowQuickAdd(false);
+                      }}
+                    />
+                    <QuickAddButton
+                      icon={<Paperclip size={12} />}
+                      label="Anexo"
+                      onClick={() => {
+                        setShowAnexoForm(true);
+                        setShowQuickAdd(false);
+                      }}
+                    />
                   </div>
                 )}
               </div>
-              <ActionBtn icon={<Paperclip size={12} />} label="Anexo" onClick={() => {}} />
+              <ActionBtn
+                icon={<Calendar size={12} />}
+                label="Datas"
+                onClick={() => prazoRef.current?.focus()}
+                active={!!item.prazo}
+              />
+              <ActionBtn
+                icon={<Check size={12} />}
+                label="Checklist"
+                onClick={() => setShowCheckForm(true)}
+                active={checklist.length > 0}
+              />
+              <div style={{ position: "relative" }}>
+                <ActionBtn
+                  icon={<Users size={12} />}
+                  label="Membros"
+                  onClick={() => setShowMembros((o) => !o)}
+                  active={(item.responsaveis || []).length > 0}
+                />
+                {showMembros && (
+                  <div
+                    style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 300 }}
+                  >
+                    <ResponsaveisPicker
+                      value={item.responsaveis || []}
+                      onChange={changeResponsaveis}
+                    />
+                  </div>
+                )}
+              </div>
+              <ActionBtn
+                icon={<Paperclip size={12} />}
+                label="Anexo"
+                onClick={() => setShowAnexoForm((o) => !o)}
+                active={(item.anexos || []).length > 0}
+              />
             </div>
 
-            {/* Status + Prazo + Responsáveis */}
-            <div style={{ display: "flex", gap: 16, marginBottom: 22, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {/* Status + Prazo */}
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                marginBottom: 22,
+                flexWrap: "wrap",
+                alignItems: "flex-end",
+              }}
+            >
               <div ref={statusMenuRef} style={{ position: "relative" }}>
                 <Label>Status</Label>
-                <button onClick={() => setShowStatusMenu((o) => !o)} style={{
-                  marginTop: 5, display: "flex", alignItems: "center", gap: 7, padding: "7px 12px",
-                  background: `${statusColor}15`, border: `1.5px solid ${statusColor}50`,
-                  borderRadius: 8, color: statusColor, fontSize: 12, fontWeight: 700,
-                  cursor: "pointer", fontFamily: "inherit",
-                }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor, flexShrink: 0 }} />
-                  {status} <ChevronDown size={12} />
+                <button
+                  onClick={() => setShowStatusMenu((o) => !o)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "7px 12px",
+                    background: `${statusColor}15`,
+                    border: `1.5px solid ${statusColor}50`,
+                    borderRadius: 8,
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: statusColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                  {kanbanStatus} <ChevronDown size={12} />
                 </button>
                 {showStatusMenu && (
-                  <div style={{
-                    position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
-                    background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10,
-                    boxShadow: "0 8px 30px rgba(0,0,0,0.14)", minWidth: 210, overflow: "hidden",
-                  }}>
-                    {STATUS_OPTIONS.map((s) => {
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: 0,
+                      zIndex: 200,
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      boxShadow: "0 8px 30px rgba(0,0,0,0.14)",
+                      minWidth: 210,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {KANBAN_COLUMNS.map((s) => {
                       const sc = STATUS_COLORS[s];
                       return (
-                        <button key={s} onClick={() => changeStatus(s)} style={{
-                          display: "flex", alignItems: "center", gap: 9, width: "100%",
-                          padding: "9px 14px", background: s === status ? `${sc}12` : "transparent",
-                          border: "none", color: sc, fontSize: 12, fontWeight: 600,
-                          cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-                        }}>
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sc, flexShrink: 0 }} />
+                        <button
+                          key={s}
+                          onClick={() => changeStatus(s)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 9,
+                            width: "100%",
+                            padding: "9px 14px",
+                            background: s === kanbanStatus ? `${sc}12` : "transparent",
+                            border: "none",
+                            color: sc,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: "50%",
+                              background: sc,
+                              flexShrink: 0,
+                            }}
+                          />
                           {s}
                         </button>
                       );
@@ -349,54 +696,65 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 )}
               </div>
 
-              <div>
-                <Label>Data de início</Label>
+              <div style={{ minWidth: 220 }}>
+                <Label>Deadline</Label>
                 <input
-                  value={item.dataInicio || ""}
-                  onChange={(e) => patchItem({ dataInicio: e.target.value })}
-                  placeholder="DD/MM/AAAA"
-                  style={{ ...fieldStyle, marginTop: 5, width: 130 }}
-                />
-              </div>
-
-              <div>
-                <Label>Prazo</Label>
-                <input
-                  value={item.prazo || ""}
+                  ref={prazoRef}
+                  type="datetime-local"
+                  value={prazoToInputValue(item.prazo || "")}
                   onChange={(e) => patchItem({ prazo: e.target.value })}
-                  placeholder="DD/MM/AAAA"
-                  style={{ ...fieldStyle, marginTop: 5, width: 130 }}
+                  style={{ ...fieldStyle, width: 220 }}
                 />
+                {item.prazo && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#64748B" }}>
+                    {formatPrazoLabel(item.prazo)}
+                  </div>
+                )}
               </div>
 
-              {diasNoStatus !== null && (
-                <div>
-                  <Label>Neste status</Label>
-                  <div style={{
-                    marginTop: 5, padding: "7px 12px", borderRadius: 8,
-                    background: diasNoStatus >= 14 ? "#FEF2F2" : diasNoStatus >= 7 ? "#FFFBEB" : "#F8FAFC",
-                    border: `1px solid ${diasNoStatus >= 14 ? "#FECACA" : diasNoStatus >= 7 ? "#FDE68A" : "#E2E8F0"}`,
-                    color: diasNoStatus >= 14 ? "#DC2626" : diasNoStatus >= 7 ? "#B45309" : "#64748B",
-                    fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
-                  }}>
-                    {diasNoStatus === 0 ? "hoje" : `${diasNoStatus} dia${diasNoStatus !== 1 ? "s" : ""}`}
-                  </div>
-                </div>
-              )}
+              <div>
+                <Label>Aviso</Label>
+                <select
+                  value={avisoPrazoDias}
+                  onChange={(e) => patchItem({ avisoPrazoDias: Number(e.target.value) })}
+                  style={{ ...fieldStyle, width: 130 }}
+                >
+                  {DEADLINE_ALERT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {(item.responsaveis || []).length > 0 && (
                 <div>
                   <Label>Responsáveis</Label>
-                  <div style={{ display: "inline-flex", marginTop: 7 }}>
-                    {(item.responsaveis || []).map((id, i) => {
+                  <div style={{ display: "inline-flex", paddingTop: 2 }}>
+                    {(item.responsaveis || []).map((id: string, i: number) => {
                       const p = profiles.find((x) => x.id === id);
                       if (!p) return null;
                       return (
-                        <span key={id} title={p.display_name} style={{
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          width: 30, height: 30, borderRadius: "50%", background: p.avatar_color || colorFor(p.id),
-                          color: "#fff", fontSize: 10, fontWeight: 800, marginLeft: i === 0 ? 0 : -8, border: "2px solid #fff",
-                        }}>{initials(p.display_name)}</span>
+                        <span
+                          key={id}
+                          title={p.display_name}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 30,
+                            height: 30,
+                            borderRadius: "50%",
+                            background: p.avatar_color || colorFor(p.id),
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            marginLeft: i === 0 ? 0 : -8,
+                            border: "2px solid #fff",
+                          }}
+                        >
+                          {initials(p.display_name)}
+                        </span>
                       );
                     })}
                   </div>
@@ -407,44 +765,110 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             {/* Etiquetas */}
             <div style={{ marginBottom: 22 }}>
               <Label>Etiquetas</Label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 6 }}>
-                {(item.etiquetas || []).map((et) => (
-                  <span key={et.id} style={{
-                    display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px",
-                    borderRadius: 20, fontSize: 11, fontWeight: 700,
-                    background: `${et.color}20`, color: et.color, border: `1px solid ${et.color}40`,
-                  }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  alignItems: "center",
+                  marginTop: 6,
+                }}
+              >
+                {(item.etiquetas || []).map((et: any) => (
+                  <span
+                    key={et.id}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "4px 10px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: `${et.color}20`,
+                      color: et.color,
+                      border: `1px solid ${et.color}40`,
+                    }}
+                  >
                     {et.label}
-                    <button onClick={() => removeEtiqueta(et.id)} style={{ background: "none", border: "none", cursor: "pointer", color: et.color, padding: 0, lineHeight: 1, display: "flex" }}>
+                    <button
+                      onClick={() => removeEtiqueta(et.id)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: et.color,
+                        padding: 0,
+                        lineHeight: 1,
+                        display: "flex",
+                      }}
+                    >
                       <X size={10} />
                     </button>
                   </span>
                 ))}
-                <button onClick={() => setShowEtiquetaForm((o) => !o)} style={{
-                  display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px",
-                  borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#F1F5F9",
-                  border: "1px solid #E2E8F0", color: "#64748B", cursor: "pointer", fontFamily: "inherit",
-                }}>
+                <button
+                  onClick={() => setShowEtiquetaForm((o) => !o)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: "#F1F5F9",
+                    border: "1px solid #E2E8F0",
+                    color: "#64748B",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
                   <Plus size={10} /> Etiqueta
                 </button>
               </div>
               {showEtiquetaForm && (
-                <div style={{ marginTop: 10, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <input
-                    autoFocus value={newEtiquetaLabel} onChange={(e) => setNewEtiquetaLabel(e.target.value)}
+                    autoFocus
+                    value={newEtiquetaLabel}
+                    onChange={(e) => setNewEtiquetaLabel(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addEtiqueta()}
                     placeholder="Nome da etiqueta..."
                     style={fieldStyle}
                   />
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {ETIQUETA_COLORS.map((c) => (
-                      <button key={c} onClick={() => setNewEtiquetaColor(c)} style={{
-                        width: 20, height: 20, borderRadius: 6, background: c,
-                        border: c === newEtiquetaColor ? "2.5px solid #0F172A" : "2px solid transparent", cursor: "pointer",
-                      }} />
+                      <button
+                        key={c}
+                        title={c}
+                        onClick={() => setNewEtiquetaColor(c)}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 7,
+                          background: c,
+                          border:
+                            c === newEtiquetaColor
+                              ? "3px solid #0F172A"
+                              : "2px solid rgba(15,23,42,0.08)",
+                          cursor: "pointer",
+                          boxShadow: c === newEtiquetaColor ? `0 0 0 3px ${c}30` : "none",
+                        }}
+                      />
                     ))}
                   </div>
-                  <button onClick={addEtiqueta} style={primaryBtn}>Adicionar</button>
+                  <button onClick={addEtiqueta} style={primaryBtn}>
+                    Adicionar
+                  </button>
                 </div>
               )}
             </div>
@@ -452,52 +876,191 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             {/* Descrição */}
             <div style={{ marginBottom: 22 }}>
               <Label>Descrição</Label>
-              <textarea
+              <MentionTextarea
                 value={item.descricao || ""}
-                onChange={(e) => patchItem({ descricao: e.target.value })}
+                onChange={(value) => patchItem({ descricao: value })}
                 placeholder="Adicione uma descrição detalhada..."
                 rows={3}
-                style={{
-                  marginTop: 6, width: "100%", background: "#F8FAFC", border: "1px solid #E2E8F0",
-                  borderRadius: 8, padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
-                  color: "#0F172A", resize: "vertical", outline: "none", lineHeight: 1.6,
-                }}
               />
             </div>
+
+            {/* Anexos */}
+            {((item.anexos || []).length > 0 || showAnexoForm) && (
+              <div style={{ marginBottom: 22 }}>
+                <Label>Anexos</Label>
+                {(item.anexos || []).length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                    {(item.anexos || []).map((anexo: any) => (
+                      <div
+                        key={anexo.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          background: "#F8FAFC",
+                          border: "1px solid #E2E8F0",
+                          borderRadius: 8,
+                          padding: "7px 9px",
+                        }}
+                      >
+                        <Paperclip size={13} color="#64748B" />
+                        <a
+                          href={anexo.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            color: "#0F766E",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: "none",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {anexo.name || anexo.url}
+                        </a>
+                        <button
+                          onClick={() => removeAnexo(anexo.id)}
+                          title="Remover anexo"
+                          style={{ ...iconBtn, padding: 3 }}
+                        >
+                          <X size={13} color="#94A3B8" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {showAnexoForm && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <input
+                      value={newAnexoName}
+                      onChange={(e) => setNewAnexoName(e.target.value)}
+                      placeholder="Nome do anexo"
+                      style={{ ...fieldStyle, flex: "1 1 160px" }}
+                    />
+                    <input
+                      autoFocus
+                      value={newAnexoUrl}
+                      onChange={(e) => setNewAnexoUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addAnexo();
+                        if (e.key === "Escape") setShowAnexoForm(false);
+                      }}
+                      placeholder="https://..."
+                      style={{ ...fieldStyle, flex: "2 1 220px" }}
+                    />
+                    <button onClick={addAnexo} style={primaryBtn}>
+                      Adicionar
+                    </button>
+                    <button onClick={() => setShowAnexoForm(false)} style={ghostBtn}>
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Checklist */}
             {(checklist.length > 0 || showCheckForm) && (
               <div style={{ marginBottom: 22 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Label>Checklist {checklist.length > 0 && <span style={{ color: "#0DD3C5", marginLeft: 4 }}>{checkPct}%</span>}</Label>
-                  {checklist.length > 0 && <span style={{ fontSize: 11, color: "#64748B" }}>{checkDone}/{checklist.length}</span>}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 6,
+                  }}
+                >
+                  <Label>
+                    Checklist{" "}
+                    {checklist.length > 0 && (
+                      <span style={{ color: "#0DD3C5", marginLeft: 4 }}>{checkPct}%</span>
+                    )}
+                  </Label>
+                  {checklist.length > 0 && (
+                    <span style={{ fontSize: 11, color: "#64748B" }}>
+                      {checkDone}/{checklist.length}
+                    </span>
+                  )}
                 </div>
                 {checklist.length > 0 && (
-                  <div style={{ height: 4, background: "#E2E8F0", borderRadius: 2, marginBottom: 10, overflow: "hidden" }}>
-                    <div style={{ width: `${checkPct}%`, height: "100%", background: "#0DD3C5", borderRadius: 2, transition: "width 0.3s" }} />
+                  <div
+                    style={{
+                      height: 4,
+                      background: "#E2E8F0",
+                      borderRadius: 2,
+                      marginBottom: 10,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${checkPct}%`,
+                        height: "100%",
+                        background: "#0DD3C5",
+                        borderRadius: 2,
+                        transition: "width 0.3s",
+                      }}
+                    />
                   </div>
                 )}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
-                  {checklist.map((ck) => (
-                    <div key={ck.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                      <button onClick={() => toggleCheck(ck.id)} style={{
-                        width: 18, height: 18, borderRadius: 4, flexShrink: 0, cursor: "pointer",
-                        border: `2px solid ${ck.done ? "#0DD3C5" : "#CBD5E1"}`,
-                        background: ck.done ? "#0DD3C5" : "transparent",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
+                  {checklist.map((ck: any) => (
+                    <div
+                      key={ck.id}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}
+                    >
+                      <button
+                        onClick={() => toggleCheck(ck.id)}
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 4,
+                          flexShrink: 0,
+                          cursor: "pointer",
+                          border: `2px solid ${ck.done ? "#0DD3C5" : "#CBD5E1"}`,
+                          background: ck.done ? "#0DD3C5" : "transparent",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
                         {ck.done && <Check size={11} color="#fff" />}
                       </button>
                       <input
                         value={ck.text}
-                        onChange={(e) => patchItem({ checklist: checklist.map((c) => c.id !== ck.id ? c : { ...c, text: e.target.value }) })}
+                        onChange={(e) =>
+                          patchItem({
+                            checklist: checklist.map((c: any) =>
+                              c.id !== ck.id ? c : { ...c, text: e.target.value },
+                            ),
+                          })
+                        }
                         style={{
-                          flex: 1, background: "none", border: "none", outline: "none", fontSize: 13,
-                          fontFamily: "inherit", color: ck.done ? "#94A3B8" : "#0F172A",
+                          flex: 1,
+                          background: "none",
+                          border: "none",
+                          outline: "none",
+                          fontSize: 13,
+                          fontFamily: "inherit",
+                          color: ck.done ? "#94A3B8" : "#0F172A",
                           textDecoration: ck.done ? "line-through" : "none",
                         }}
                       />
-                      <button onClick={() => deleteCheck(ck.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#CBD5E1", padding: 2, display: "flex" }}>
+                      <button
+                        onClick={() => deleteCheck(ck.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#CBD5E1",
+                          padding: 2,
+                          display: "flex",
+                        }}
+                      >
                         <X size={12} />
                       </button>
                     </div>
@@ -506,19 +1069,38 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 {showCheckForm ? (
                   <div style={{ display: "flex", gap: 6 }}>
                     <input
-                      autoFocus value={newCheckItem} onChange={(e) => setNewCheckItem(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") addCheckItem(); if (e.key === "Escape") setShowCheckForm(false); }}
+                      autoFocus
+                      value={newCheckItem}
+                      onChange={(e) => setNewCheckItem(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addCheckItem();
+                        if (e.key === "Escape") setShowCheckForm(false);
+                      }}
                       placeholder="Novo item..."
                       style={fieldStyle}
                     />
-                    <button onClick={addCheckItem} style={primaryBtn}><Plus size={13} /></button>
-                    <button onClick={() => setShowCheckForm(false)} style={ghostBtn}><X size={13} /></button>
+                    <button onClick={addCheckItem} style={primaryBtn}>
+                      <Plus size={13} />
+                    </button>
+                    <button onClick={() => setShowCheckForm(false)} style={ghostBtn}>
+                      <X size={13} />
+                    </button>
                   </div>
                 ) : (
-                  <button onClick={() => setShowCheckForm(true)} style={{
-                    display: "inline-flex", alignItems: "center", gap: 5, background: "none",
-                    border: "none", color: "#94A3B8", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                  }}>
+                  <button
+                    onClick={() => setShowCheckForm(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      background: "none",
+                      border: "none",
+                      color: "#94A3B8",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
                     <Plus size={12} /> Adicionar item
                   </button>
                 )}
@@ -526,10 +1108,32 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             )}
           </div>
 
-          {/* ── Coluna direita: atividade ── */}
-          <div style={{ width: 284, padding: "20px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", background: "#FAFBFC", borderRadius: "0 0 16px 0" }}>
-            <Label>Atividade</Label>
+          {/* ── Right column — atividade ── */}
+          <div
+            style={{
+              width: 284,
+              padding: "20px 18px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              overflowY: "auto",
+              background: "#FAFBFC",
+              borderRadius: "0 0 16px 0",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#94A3B8",
+                textTransform: "uppercase",
+                letterSpacing: 0.7,
+              }}
+            >
+              Atividade
+            </div>
 
+            {/* Comment input */}
             <div>
               <MentionTextarea
                 value={commentDraft}
@@ -540,37 +1144,115 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               />
               {commentDraft.trim() && (
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <button onClick={addComment} style={primaryBtn}>Salvar</button>
-                  <button onClick={() => setCommentDraft("")} style={ghostBtn}>Cancelar</button>
+                  <button onClick={addComment} style={primaryBtn}>
+                    Salvar
+                  </button>
+                  <button onClick={() => setCommentDraft("")} style={ghostBtn}>
+                    Cancelar
+                  </button>
                 </div>
               )}
             </div>
 
+            {/* Activity list */}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {atividade.length === 0 && (
-                <p style={{ fontSize: 12, color: "#CBD5E1", fontStyle: "italic" }}>Sem atividade ainda.</p>
+              {allActivity.length === 0 && (
+                <p style={{ fontSize: 12, color: "#CBD5E1", fontStyle: "italic" }}>
+                  Sem atividade ainda.
+                </p>
               )}
-              {atividade.map((c) => {
+              {allActivity.map((c: any) => {
                 const p = profiles.find((x) => x.id === c.autor_id);
-                const avatarColor = p ? (p.avatar_color || colorFor(p.id)) : "#64748B";
+                const avatarColor = p ? p.avatar_color || colorFor(p.id) : "#64748B";
                 const name = c.autor_nome || "Usuário";
                 return (
                   <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      width: 26, height: 26, borderRadius: "50%", background: avatarColor,
-                      color: "#fff", fontSize: 9, fontWeight: 800, flexShrink: 0,
-                    }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 26,
+                        height: 26,
+                        borderRadius: "50%",
+                        background: avatarColor,
+                        color: "#fff",
+                        fontSize: 9,
+                        fontWeight: 800,
+                        flexShrink: 0,
+                      }}
+                    >
                       {p ? initials(p.display_name) : name.slice(0, 2).toUpperCase()}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", gap: 6, alignItems: "baseline", marginBottom: 3, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{name}</span>
-                        <span style={{ fontSize: 10, color: "#94A3B8" }}>{c.created_at ? timeAgo(c.created_at) : c.date}</span>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "baseline",
+                          marginBottom: 3,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>
+                          {name}
+                        </span>
+                        <span style={{ fontSize: 10, color: "#94A3B8" }}>
+                          {c.created_at ? timeAgo(c.created_at) : c.date}
+                        </span>
+                        <button
+                          onClick={() => startEditComment(c)}
+                          title="Editar comentário"
+                          style={{ ...miniTextBtn, marginLeft: "auto" }}
+                        >
+                          <Edit3 size={11} />
+                        </button>
+                        <button
+                          onClick={() => deleteComment(c.id)}
+                          title="Excluir comentário"
+                          style={miniTextBtn}
+                        >
+                          <Trash2 size={11} />
+                        </button>
                       </div>
-                      <div style={{ fontSize: 12, color: "#475569", background: "#fff", padding: "7px 10px", borderRadius: 8, lineHeight: 1.5, border: "1px solid #F1F5F9" }}>
-                        <MentionText text={c.text} />
-                      </div>
+                      {editingCommentId === c.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <MentionTextarea
+                            value={editingCommentText}
+                            onChange={setEditingCommentText}
+                            onSubmit={saveCommentEdit}
+                            rows={3}
+                          />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={saveCommentEdit} style={primaryBtn}>
+                              Salvar
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingCommentId(null);
+                                setEditingCommentText("");
+                              }}
+                              style={ghostBtn}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#475569",
+                            background: "#fff",
+                            padding: "7px 10px",
+                            borderRadius: 8,
+                            lineHeight: 1.5,
+                            border: "1px solid #F1F5F9",
+                          }}
+                        >
+                          <MentionText text={c.text} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -583,44 +1265,155 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   );
 }
 
-function Label({ children }) {
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.7 }}>
+    <div
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: "#94A3B8",
+        textTransform: "uppercase",
+        letterSpacing: 0.7,
+      }}
+    >
       {children}
     </div>
   );
 }
 
-function ActionBtn({ icon, label, onClick, active }) {
+function ActionBtn({
+  icon,
+  label,
+  onClick,
+  active,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+}) {
   return (
-    <button onClick={onClick} style={{
-      display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 11px",
-      borderRadius: 8, border: `1px solid ${active ? "#0DD3C580" : "#E2E8F0"}`,
-      background: active ? "#F0FDFA" : "#F8FAFC",
-      color: active ? "#0F766E" : "#475569",
-      fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-    }}>
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "6px 11px",
+        borderRadius: 8,
+        border: `1px solid ${active ? "#0DD3C580" : "#E2E8F0"}`,
+        background: active ? "#F0FDFA" : "#F8FAFC",
+        color: active ? "#0F766E" : "#475569",
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily: "inherit",
+      }}
+    >
       {icon} {label}
     </button>
   );
 }
 
-const iconBtn = {
-  background: "none", border: "none", cursor: "pointer",
-  padding: 6, borderRadius: 6, display: "flex", alignItems: "center",
+function QuickAddButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        padding: "8px 10px",
+        background: "transparent",
+        border: "none",
+        borderRadius: 6,
+        color: "#475569",
+        cursor: "pointer",
+        fontFamily: "inherit",
+        fontSize: 12,
+        fontWeight: 700,
+        textAlign: "left",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+const iconBtn: any = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  padding: 6,
+  borderRadius: 6,
+  display: "flex",
+  alignItems: "center",
 };
-const fieldStyle = {
-  background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8,
-  padding: "7px 10px", fontSize: 12, fontFamily: "inherit", outline: "none",
-  color: "#0F172A", width: 160,
+const floatingMenuStyle: any = {
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  left: 0,
+  zIndex: 500,
+  minWidth: 170,
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: 10,
+  boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
+  padding: 4,
 };
-const primaryBtn = {
-  background: "#0DD3C5", border: "none", borderRadius: 8, padding: "7px 14px",
-  color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-  display: "inline-flex", alignItems: "center", gap: 4,
+const miniTextBtn: any = {
+  background: "transparent",
+  border: "none",
+  color: "#94A3B8",
+  cursor: "pointer",
+  padding: 2,
+  display: "inline-flex",
+  alignItems: "center",
 };
-const ghostBtn = {
-  background: "#F1F5F9", border: "1px solid #E2E8F0", borderRadius: 8, padding: "7px 10px",
-  fontSize: 12, color: "#64748B", cursor: "pointer", fontFamily: "inherit",
-  display: "inline-flex", alignItems: "center",
+const fieldStyle: any = {
+  background: "#F8FAFC",
+  border: "1px solid #E2E8F0",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 12,
+  fontFamily: "inherit",
+  outline: "none",
+  color: "#0F172A",
+  width: 160,
+};
+const primaryBtn: any = {
+  background: "#0DD3C5",
+  border: "none",
+  borderRadius: 8,
+  padding: "7px 14px",
+  color: "#fff",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+};
+const ghostBtn: any = {
+  background: "#F1F5F9",
+  border: "1px solid #E2E8F0",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 12,
+  color: "#64748B",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  display: "inline-flex",
+  alignItems: "center",
 };

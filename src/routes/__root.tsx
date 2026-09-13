@@ -86,8 +86,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "AdekeIntern" },
       { name: "twitter:description", content: "Adequação Interna" },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/AJQaJ4ZTnvgXZX2SbG134lDOdnf1/social-images/social-1778528576299-Captura_de_tela_2026-05-11_164214.webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/AJQaJ4ZTnvgXZX2SbG134lDOdnf1/social-images/social-1778528576299-Captura_de_tela_2026-05-11_164214.webp" },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/AJQaJ4ZTnvgXZX2SbG134lDOdnf1/social-images/social-1778528576299-Captura_de_tela_2026-05-11_164214.webp",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/AJQaJ4ZTnvgXZX2SbG134lDOdnf1/social-images/social-1778528576299-Captura_de_tela_2026-05-11_164214.webp",
+      },
     ],
     links: [
       {
@@ -142,8 +150,10 @@ function RootComponent() {
             router.navigate({
               to: "/",
               search: {
-                cliente: n.cliente_id, modulo: n.modulo,
-                plano: n.plano_id, item: n.item_id || undefined,
+                cliente: n.cliente_id,
+                modulo: n.modulo,
+                plano: n.plano_id,
+                item: n.item_id || undefined,
               } as any,
             });
           }}

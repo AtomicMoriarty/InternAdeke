@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export type Notification = {
@@ -21,54 +21,80 @@ export type Notification = {
 
 export function useNotifications(userId: string | null) {
   const [list, setList] = useState<Notification[]>([]);
+  const scopeRef = useRef(Math.random().toString(36).slice(2, 9));
 
   useEffect(() => {
-    if (!userId) { setList([]); return; }
+    if (!userId) {
+      setList([]);
+      return;
+    }
     let active = true;
     (async () => {
       const { data } = await supabase
-        .from("notifications").select("*")
-        .eq("user_id", userId).order("created_at", { ascending: false }).limit(100);
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
       if (active) setList((data || []) as Notification[]);
     })();
 
     const ch = supabase
-      .channel(`notif-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+      .channel(`notif-${userId}-${scopeRef.current}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
         (payload) => {
           setList((prev) => {
             if (payload.eventType === "INSERT") return [payload.new as Notification, ...prev];
-            if (payload.eventType === "UPDATE") return prev.map((n) => n.id === (payload.new as any).id ? payload.new as Notification : n);
-            if (payload.eventType === "DELETE") return prev.filter((n) => n.id !== (payload.old as any).id);
+            if (payload.eventType === "UPDATE")
+              return prev.map((n) =>
+                n.id === (payload.new as any).id ? (payload.new as Notification) : n,
+              );
+            if (payload.eventType === "DELETE")
+              return prev.filter((n) => n.id !== (payload.old as any).id);
             return prev;
           });
-        }).subscribe();
+        },
+      )
+      .subscribe();
 
-    return () => { active = false; supabase.removeChannel(ch); };
+    return () => {
+      active = false;
+      supabase.removeChannel(ch);
+    };
   }, [userId]);
 
   return list;
 }
 
 export async function markAllRead(userId: string) {
-  await supabase.from("notifications").update({ lida: true }).eq("user_id", userId).eq("lida", false);
+  await supabase
+    .from("notifications")
+    .update({ lida: true })
+    .eq("user_id", userId)
+    .eq("lida", false);
 }
 export async function markRead(id: string) {
   await supabase.from("notifications").update({ lida: true }).eq("id", id);
 }
 
 export type NotifContext = {
-  cliente_id: string; cliente_nome: string;
+  cliente_id: string;
+  cliente_nome: string;
   modulo: string;
-  plano_id: string; plano_nome: string;
-  item_id?: string | null; item_nome?: string | null;
-  autor_id: string | null; autor_nome: string;
+  plano_id: string;
+  plano_nome: string;
+  item_id?: string | null;
+  item_nome?: string | null;
+  autor_id: string | null;
+  autor_nome: string;
   trecho: string;
 };
 
 export async function emitNotifications(opts: {
   ctx: NotifContext;
-  mentionedIds: string[];   // users mentioned via @
+  mentionedIds: string[]; // users mentioned via @
   responsibleIds: string[]; // users responsible for the item/plan
 }) {
   const { ctx, mentionedIds, responsibleIds } = opts;
@@ -120,7 +146,9 @@ export async function emitMudancaStatus(opts: {
   const targets = opts.responsibleIds.filter((id) => id !== opts.ctx.autor_id);
   if (!targets.length) return;
   const rows = targets.map((uid) => ({
-    ...baseRow(opts.ctx), user_id: uid, tipo: "mudanca_status",
+    ...baseRow(opts.ctx),
+    user_id: uid,
+    tipo: "mudanca_status",
     trecho: `Novo status: ${opts.novoStatus}`,
   }));
   await supabase.from("notifications").insert(rows);

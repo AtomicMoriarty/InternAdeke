@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 const ROW_ID = "main";
 
-export function useDashboardState() {
+export function useDashboardState(scope = "default") {
   const [data, setDataState] = useState<any>(null);
   const [loaded, setLoaded] = useState(false);
   const dataRef = useRef<any>(null);
@@ -15,7 +15,11 @@ export function useDashboardState() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data: row } = await supabase.from("dashboard_state").select("data").eq("id", ROW_ID).maybeSingle();
+      const { data: row } = await supabase
+        .from("dashboard_state")
+        .select("data")
+        .eq("id", ROW_ID)
+        .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
         dataRef.current = row.data;
@@ -24,8 +28,11 @@ export function useDashboardState() {
       }
       setLoaded(true);
     })();
-    const ch = supabase.channel("dashboard_state_quadro")
-      .on("postgres_changes", { event: "*", schema: "public", table: "dashboard_state", filter: `id=eq.${ROW_ID}` },
+    const ch = supabase
+      .channel(`dashboard_state_${scope}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "dashboard_state", filter: `id=eq.${ROW_ID}` },
         (payload: any) => {
           const newData = payload.new?.data;
           if (!newData) return;
@@ -35,9 +42,14 @@ export function useDashboardState() {
           dataRef.current = newData;
           lastSentRef.current = newJson;
           setDataState(newData);
-        }).subscribe();
-    return () => { mounted = false; supabase.removeChannel(ch); };
-  }, []);
+        },
+      )
+      .subscribe();
+    return () => {
+      mounted = false;
+      supabase.removeChannel(ch);
+    };
+  }, [scope]);
 
   const update = useCallback((updater: (prev: any) => any) => {
     setDataState((prev: any) => {
@@ -49,7 +61,10 @@ export function useDashboardState() {
         const snap = dataRef.current;
         const snapJson = JSON.stringify(snap);
         lastSentRef.current = snapJson;
-        await supabase.from("dashboard_state").update({ data: snap, updated_at: new Date().toISOString() }).eq("id", ROW_ID);
+        await supabase
+          .from("dashboard_state")
+          .update({ data: snap, updated_at: new Date().toISOString() })
+          .eq("id", ROW_ID);
         if (JSON.stringify(dataRef.current) === snapJson) pendingRef.current = false;
       }, 500);
       return next;

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import AdekeDashboard from "@/components/AdekeDashboard";
 
@@ -43,26 +43,96 @@ function Index() {
       window.dispatchEvent(new CustomEvent("adeke:deeplink", { detail: search }));
     }, 400);
     return () => clearTimeout(t);
-  }, [session, search?.cliente, search?.item, search?.plano, search?.modulo]);
+  }, [session, search]);
 
   if (!checked || !session) {
-    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F0F5FF", color: "#64748B" }}>Carregando...</div>;
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#F0F5FF",
+          color: "#64748B",
+        }}
+      >
+        Carregando...
+      </div>
+    );
   }
 
   return (
     <div style={{ position: "relative" }}>
-      <Link to="/quadro" style={{
-        position: "fixed", top: 16, right: 168, zIndex: 1000,
-        background: "#0DD3C5", color: "#fff", border: "none", borderRadius: 8,
-        padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer",
-        fontFamily: "Outfit, sans-serif", textDecoration: "none",
-        display: "inline-flex", alignItems: "center", gap: 6, boxShadow: "0 2px 6px rgba(13,211,197,0.3)",
-      }}>
+      <Link
+        to="/quadro"
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 168,
+          zIndex: 1000,
+          background: "#0DD3C5",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: "Outfit, sans-serif",
+          textDecoration: "none",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          boxShadow: "0 2px 6px rgba(13,211,197,0.3)",
+        }}
+      >
         <LayoutGrid size={13} /> Quadro Geral
       </Link>
+      <Link
+        to="/eu"
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 300,
+          zIndex: 1000,
+          background: "#0F172A",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          fontFamily: "Outfit, sans-serif",
+          textDecoration: "none",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <User size={13} /> Eu
+      </Link>
       <button
-        onClick={async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); }}
-        style={{ position: "fixed", top: 16, right: 20, zIndex: 1000, background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer", fontFamily: "Outfit, sans-serif" }}
+        onClick={async () => {
+          await supabase.auth.signOut();
+          navigate({ to: "/auth" });
+        }}
+        style={{
+          position: "fixed",
+          top: 16,
+          right: 20,
+          zIndex: 1000,
+          background: "#fff",
+          border: "1px solid #E2E8F0",
+          borderRadius: 8,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "#475569",
+          cursor: "pointer",
+          fontFamily: "Outfit, sans-serif",
+        }}
         title={session.user.email}
       >
         Sair
