@@ -8,8 +8,20 @@
 // mesmo quando nada mudou — é justamente o "nada mudou há 3 semanas" que
 // precisa saltar aos olhos.
 
+import { AREA_IDS } from "@/lib/areas";
+
 /** Áreas que recebem o acompanhamento. Vazio desliga a automação. */
-export const AREAS_COM_ACOMPANHAMENTO = ["inpi"];
+export const AREAS_COM_ACOMPANHAMENTO = AREA_IDS;
+
+/**
+ * Quantos acompanhamentos manter por item.
+ *
+ * Sem teto isto cresce para sempre: 25 itens semanais dão ~1.300 comentários e
+ * 250 KB por ano, num JSON que é carregado inteiro a cada abertura do app — e
+ * piora conforme entram clientes. Oito semanas bastam para enxergar "parado há
+ * um mês" sem pesar. Comentários escritos por pessoas nunca são removidos.
+ */
+export const MAX_ACOMPANHAMENTOS_POR_ITEM = 8;
 
 const DIA_MS = 86400000;
 
@@ -91,6 +103,28 @@ function jaTemDaSemana(item: any, semana: string): boolean {
   return (item.comentarios || []).some((c: any) => c?.semanaAcompanhamento === semana);
 }
 
+/**
+ * Mantem so os acompanhamentos mais recentes, preservando a ordem original e
+ * todos os comentarios escritos por pessoas.
+ */
+export function podarAcompanhamentos(
+  comentarios: any[],
+  max: number = MAX_ACOMPANHAMENTOS_POR_ITEM,
+): any[] {
+  const ehAcompanhamento = (c: any) => !!c?.semanaAcompanhamento;
+  const automaticos = comentarios.filter(ehAcompanhamento);
+  if (automaticos.length <= max) return comentarios;
+
+  const manter = new Set(
+    automaticos
+      .slice()
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")))
+      .slice(-max)
+      .map((c) => c.id),
+  );
+  return comentarios.filter((c) => !ehAcompanhamento(c) || manter.has(c.id));
+}
+
 export type ResultadoAcompanhamento = {
   data: any;
   comentariosCriados: number;
@@ -134,21 +168,19 @@ export function aplicarAcompanhamentoSemanal(
             if (!texto) return item;
 
             criados++;
+            const novo = {
+              id: `cm${uid()}`,
+              tipo: "acompanhamento",
+              semanaAcompanhamento: semana,
+              date: dataBR(agora),
+              created_at: agora.toISOString(),
+              text: texto,
+              autor_id: null,
+              autor_nome: "sistema",
+            };
             return {
               ...item,
-              comentarios: [
-                ...(item.comentarios || []),
-                {
-                  id: `cm${uid()}`,
-                  tipo: "acompanhamento",
-                  semanaAcompanhamento: semana,
-                  date: dataBR(agora),
-                  created_at: agora.toISOString(),
-                  text: texto,
-                  autor_id: null,
-                  autor_nome: "sistema",
-                },
-              ],
+              comentarios: podarAcompanhamentos([...(item.comentarios || []), novo]),
             };
           }),
         })),
