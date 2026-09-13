@@ -151,6 +151,52 @@ export function tempoPorEtapa(item: ItemPlano, agora = new Date()): Record<strin
   return acc;
 }
 
+export type EtapaPercorrida = {
+  status: string;
+  dias: number;
+  /** Etapa em que o item está agora; ainda contando. */
+  atual: boolean;
+};
+
+/**
+ * Trajetória do item, em ordem: por quais etapas passou e quanto tempo em cada.
+ *
+ * Difere de tempoPorEtapa, que soma por status e perde a ordem. Aqui a
+ * sequência importa: é ela que mostra "voltou para Pendência Cliente três
+ * vezes" — um item pode aparecer mais de uma vez na lista.
+ */
+export function trajetoriaDoItem(item: ItemPlano, agora = new Date()): EtapaPercorrida[] {
+  const hist = [...(item.statusHistory || [])]
+    .filter((t) => t && t.em)
+    .sort((a, b) => a.em.localeCompare(b.em));
+
+  const emDias = (ini: Date, fim: Date) =>
+    Math.max(0, Math.round(((fim.getTime() - ini.getTime()) / DIA_MS) * 10) / 10);
+
+  if (!hist.length) {
+    const ini = item.statusChangedAt
+      ? new Date(item.statusChangedAt)
+      : item.criadoEm
+        ? new Date(item.criadoEm)
+        : null;
+    if (!ini || isNaN(ini.getTime())) return [];
+    return [{ status: item.status, dias: emDias(ini, agora), atual: true }];
+  }
+
+  const nascimento = item.criadoEm ? new Date(item.criadoEm) : new Date(hist[0].em);
+  const out: EtapaPercorrida[] = [
+    { status: hist[0].de, dias: emDias(nascimento, new Date(hist[0].em)), atual: false },
+  ];
+
+  for (let i = 0; i < hist.length; i++) {
+    const ini = new Date(hist[i].em);
+    const ultimo = i + 1 >= hist.length;
+    const fim = ultimo ? agora : new Date(hist[i + 1].em);
+    out.push({ status: hist[i].para, dias: emDias(ini, fim), atual: ultimo });
+  }
+  return out;
+}
+
 /** Dias desde a última mudança de status (ou desde a criação, se nunca mudou). */
 export function diasParado(item: ItemPlano, agora = new Date()): number | null {
   const ref = item.statusChangedAt || item.criadoEm;

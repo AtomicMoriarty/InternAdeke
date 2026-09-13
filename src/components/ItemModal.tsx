@@ -41,6 +41,8 @@ import type {
   DashboardState,
 } from "@/lib/dashboardTypes";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
+import { trajetoriaDoItem } from "@/lib/relatorios";
+import { COLUMN_COLORS } from "@/lib/flattenItems";
 import {
   enviarAnexo,
   linkTemporario,
@@ -263,6 +265,17 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
   const acompanhando = temAcompanhamento(item);
+  // Trajetória do card: por quais etapas passou e quanto tempo em cada. Um
+  // status pode repetir — é justamente a ida e volta que interessa enxergar.
+  const trajetoria = trajetoriaDoItem(
+    {
+      ...item,
+      status: item.kanbanStatus || item.status || "A Fazer",
+      statusHistory: item.statusHistory || [],
+    } as never,
+    new Date(),
+  );
+  const diasNaEtapaAtual = trajetoria.find((e) => e.atual)?.dias ?? null;
   const allActivity: Comentario[] = (item.comentarios || [])
     .slice()
     .sort((a: Comentario, b: Comentario) => (a.created_at || "").localeCompare(b.created_at || ""));
@@ -828,6 +841,45 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
 
               {/* Acompanhamento semanal: opt-in por card, para o registro
                   automatico aparecer so onde alguem esta de olho. */}
+              {diasNaEtapaAtual !== null && (
+                <div>
+                  <Label>Nesta etapa</Label>
+                  <div
+                    style={{
+                      marginTop: 5,
+                      padding: "7px 12px",
+                      borderRadius: 8,
+                      whiteSpace: "nowrap",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background:
+                        diasNaEtapaAtual >= 14
+                          ? "#FEF2F2"
+                          : diasNaEtapaAtual >= 7
+                            ? "#FFFBEB"
+                            : "#F8FAFC",
+                      border: `1px solid ${
+                        diasNaEtapaAtual >= 14
+                          ? "#FECACA"
+                          : diasNaEtapaAtual >= 7
+                            ? "#FDE68A"
+                            : "#E2E8F0"
+                      }`,
+                      color:
+                        diasNaEtapaAtual >= 14
+                          ? "#DC2626"
+                          : diasNaEtapaAtual >= 7
+                            ? "#B45309"
+                            : "#64748B",
+                    }}
+                  >
+                    {diasNaEtapaAtual < 1
+                      ? "hoje"
+                      : `${Math.round(diasNaEtapaAtual)} dia${Math.round(diasNaEtapaAtual) !== 1 ? "s" : ""}`}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label>Acompanhar</Label>
                 <button
@@ -1028,6 +1080,101 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 </div>
               )}
             </div>
+
+            {/* Trajetória: por quais etapas o card passou e quanto tempo em
+                cada uma. Um status pode repetir — é a ida e volta que revela
+                onde o processo trava. */}
+            {trajetoria.length > 0 && (
+              <div style={{ marginBottom: 22 }}>
+                <Label>Trajetória</Label>
+                <div style={{ marginTop: 8 }}>
+                  {(() => {
+                    const total = trajetoria.reduce((acc, e) => acc + e.dias, 0) || 1;
+                    return (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            height: 8,
+                            borderRadius: 4,
+                            overflow: "hidden",
+                            background: "#F1F5F9",
+                            marginBottom: 8,
+                          }}
+                        >
+                          {trajetoria.map((e, i) => (
+                            <span
+                              key={i}
+                              title={`${e.status}: ${e.dias.toFixed(1)} dias`}
+                              style={{
+                                width: `${(e.dias / total) * 100}%`,
+                                background: COLUMN_COLORS[e.status] || "#94A3B8",
+                                opacity: e.atual ? 1 : 0.75,
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {trajetoria.map((e, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                fontSize: 11.5,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: "50%",
+                                  flexShrink: 0,
+                                  background: COLUMN_COLORS[e.status] || "#94A3B8",
+                                }}
+                              />
+                              <span
+                                style={{
+                                  color: "#0F172A",
+                                  fontWeight: e.atual ? 800 : 600,
+                                  flex: 1,
+                                }}
+                              >
+                                {e.status}
+                                {e.atual && (
+                                  <span style={{ color: "#0DD3C5", fontWeight: 700 }}>
+                                    {" "}
+                                    · agora
+                                  </span>
+                                )}
+                              </span>
+                              <span style={{ color: "#64748B", fontWeight: 700 }}>
+                                {e.dias < 1 ? "menos de 1 dia" : `${Math.round(e.dias)}d`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            color: "#94A3B8",
+                            marginTop: 6,
+                            paddingTop: 6,
+                            borderTop: "1px solid #F1F5F9",
+                          }}
+                        >
+                          {Math.round(total)} dias desde a criação ·{" "}
+                          {trajetoria.length === 1
+                            ? "sem mudança de etapa ainda"
+                            : `${trajetoria.length - 1} mudança${trajetoria.length - 1 !== 1 ? "s" : ""} de etapa`}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
 
             {/* Descrição */}
             <div style={{ marginBottom: 22 }}>

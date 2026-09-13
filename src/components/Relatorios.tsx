@@ -12,6 +12,7 @@ import {
   itensParados,
   atividadeNoPeriodo,
   situacaoPrazo,
+  tempoPorEtapa,
   diasEmAberto,
   diasParado,
   paraCSV,
@@ -95,6 +96,9 @@ export default function Relatorios() {
   }
 
   function exportarItens() {
+    // Uma coluna por etapa. É assim que dá para cruzar em planilha quanto tempo
+    // cada card passou em cada fase — a média do painel não mostra isso.
+    const etapas = KANBAN_COLUMNS as readonly string[];
     baixarCSV(
       `itens-${hojeArquivo()}.csv`,
       paraCSV(
@@ -111,6 +115,7 @@ export default function Relatorios() {
           "Dias em aberto",
           "Dias parado",
           "Checklist",
+          ...etapas.map((e) => `Dias em ${e}`),
         ],
         itens.map((i) => {
           const sp = situacaoPrazo(i, agora);
@@ -127,6 +132,10 @@ export default function Relatorios() {
             diasEmAberto(i, agora) ?? "",
             diasParado(i, agora) ?? "",
             i.checklistTotal ? `${i.checklistFeitos}/${i.checklistTotal}` : "",
+            ...(() => {
+              const t = tempoPorEtapa(i, agora);
+              return etapas.map((e) => (t[e] ? Math.round(t[e] * 10) / 10 : ""));
+            })(),
           ];
         }),
       ),
