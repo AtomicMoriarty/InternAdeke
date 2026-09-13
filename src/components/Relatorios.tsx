@@ -25,7 +25,7 @@ function hojeArquivo() {
 }
 
 export default function Relatorios() {
-  const { data, loaded } = useDashboardState();
+  const { data, loaded } = useDashboardState("relatorios");
   const profiles = useProfiles();
   const [periodoDias, setPeriodoDias] = useState(7);
 

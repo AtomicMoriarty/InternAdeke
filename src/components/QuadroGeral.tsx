@@ -14,6 +14,7 @@ import {
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { AREA_IDS } from "@/lib/areas";
 
 type Filters = {
   modulo: "LGPD" | "Compliance" | "Produtos" | "ambos";
@@ -39,7 +40,8 @@ type Props = {
   allowedModules?: string[];
 };
 
-const ALL_MODULES = ["compliance", "lgpd", "produtos"];
+// Derivado do registro de areas: um quadro novo entra aqui sozinho.
+const ALL_MODULES = [...AREA_IDS, "produtos"];
 
 export default function QuadroGeral({ filters, setFilters, allowedModules }: Props) {
   const { data, loaded, update } = useDashboardState("quadro");

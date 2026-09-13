@@ -1,10 +1,12 @@
 // Flattens dashboard_state into a flat list of cards for the Quadro Geral.
 
+import { AREA_IDS, moduloOf } from "@/lib/areas";
+
 export type FlatCard = {
   clienteId: string;
   clienteNome: string;
-  areaId: string; // "lgpd" | "compliance" | "produtos"
-  modulo: "LGPD" | "Compliance" | "Produtos";
+  areaId: string;
+  modulo: string;
   planoId: string;
   planoNome: string;
   itemId: string;
@@ -41,10 +43,13 @@ export const COLUMN_COLORS: Record<KanbanStatus, string> = {
   Suspenso: "#94A3B8",
 };
 
-export const MODULO_COLOR: Record<"LGPD" | "Compliance" | "Produtos", string> = {
+export const MODULO_COLOR: Record<string, string> = {
   LGPD: "#EF4444",
   Compliance: "#8B5CF6",
   Produtos: "#10B981",
+  INPI: "#F59E0B",
+  "Societário": "#6366F1",
+  Comercial: "#EC4899",
 };
 
 function deriveKanbanStatus(item: any): KanbanStatus {
@@ -63,8 +68,8 @@ export function flattenDashboard(data: any): FlatCard[] {
   if (!data?.areas) return [];
   const cards: FlatCard[] = [];
   for (const area of data.areas) {
-    if (area.id !== "lgpd" && area.id !== "compliance") continue;
-    const modulo: "LGPD" | "Compliance" = area.id === "lgpd" ? "LGPD" : "Compliance";
+    if (!AREA_IDS.includes(area.id)) continue;
+    const modulo = moduloOf(area.id);
     for (const cliente of area.clientes || []) {
       for (const plano of cliente.planos || []) {
         for (const item of plano.items || []) {
@@ -135,6 +140,21 @@ export function flattenDashboard(data: any): FlatCard[] {
   return cards;
 }
 
+/** Grava o status registrando quando mudou, base do relatorio de tempo por etapa. */
+function carimbarStatus(it: any, newStatus: KanbanStatus) {
+  const agora = new Date().toISOString();
+  return {
+    ...it,
+    status: newStatus,
+    kanbanStatus: newStatus,
+    statusChangedAt: agora,
+    statusHistory: [
+      ...(Array.isArray(it.statusHistory) ? it.statusHistory : []),
+      { de: it.kanbanStatus || deriveKanbanStatus(it), para: newStatus, em: agora },
+    ].slice(-50),
+  };
+}
+
 export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: KanbanStatus): any {
   return {
     ...data,
@@ -151,9 +171,7 @@ export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: Kanban
               return {
                 ...p,
                 items: p.items.map((it: any) =>
-                  it.id !== card.itemId
-                    ? it
-                    : { ...it, status: newStatus, kanbanStatus: newStatus },
+                  it.id !== card.itemId ? it : carimbarStatus(it, newStatus),
                 ),
               };
             }),
@@ -167,7 +185,7 @@ export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: Kanban
         : {
             ...p,
             items: (p.items || []).map((it: any) =>
-              it.id !== card.itemId ? it : { ...it, status: newStatus, kanbanStatus: newStatus },
+              it.id !== card.itemId ? it : carimbarStatus(it, newStatus),
             ),
           },
     ),

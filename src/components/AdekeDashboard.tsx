@@ -28,9 +28,17 @@ import {
   ArrowDown,
   MessageSquare,
   LayoutDashboard,
+  Stamp,
+  Scale,
+  Handshake,
+  BarChart3,
 } from "lucide-react";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
+import Relatorios from "@/components/Relatorios";
+import {
+  AREAS, AREA_IDS, moduloOf as moduloOfArea, DEMANDAS_POR_AREA, checklistTemplateFor,
+} from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -39,9 +47,7 @@ import ItemModal from "@/components/ItemModal";
 import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
 function moduloOf(areaId) {
-  if (areaId === "lgpd") return "LGPD";
-  if (areaId === "compliance") return "Compliance";
-  return "Produtos";
+  return moduloOfArea(areaId);
 }
 function ResponsaveisAvatars({ ids }) {
   const profiles = useProfiles();
@@ -404,6 +410,9 @@ const INIT = {
       dpo: "",
       clientes: [],
     },
+    { id: "inpi", name: "INPI & Marcas", color: "#F59E0B", responsavel: "", responsaveis: [], clientes: [] },
+    { id: "societario", name: "Societário", color: "#8B5CF6", responsavel: "", responsaveis: [], clientes: [] },
+    { id: "comercial", name: "Comercial", color: "#EC4899", responsavel: "", responsaveis: [], clientes: [] },
   ],
   produtos: [
     {
@@ -679,7 +688,42 @@ function areaProg(area) {
 }
 
 // ─── Templates por área ──────────────────────────────────────────────────────
+// Bancos ja existentes foram criados quando so havia duas areas. Sem isto os
+// quadros novos nunca apareceriam para quem ja usa o sistema.
+function ensureAreas(data) {
+  if (!data || !Array.isArray(data.areas)) return data;
+  const existentes = new Set(data.areas.map((a) => a.id));
+  const faltando = AREAS.filter((a) => !existentes.has(a.id)).map((a) => ({
+    id: a.id, name: a.name, color: a.color,
+    responsavel: "", responsaveis: [],
+    ...(a.id === "lgpd" ? { dpo: "" } : {}),
+    clientes: [],
+  }));
+  if (!faltando.length) return data;
+  const porId = new Map([...data.areas, ...faltando].map((a) => [a.id, a]));
+  const ordenadas = AREAS.map((a) => porId.get(a.id)).filter(Boolean);
+  const extras = data.areas.filter((a) => !AREAS.some((x) => x.id === a.id));
+  return { ...data, areas: [...ordenadas, ...extras] };
+}
+
 const TEMPLATES = {
+  inpi: [
+    { name: "Dados da empresa", items: ["Contato", "Dados da empresa"] },
+    { name: "Marcas em andamento", items: [] },
+    { name: "Marcas registradas", items: [] },
+    { name: "Prazos e vigências", items: [] },
+  ],
+  societario: [
+    { name: "Dados da empresa", items: ["Contato", "Dados da empresa", "Quadro societário"] },
+    { name: "Documentos societários", items: ["Contrato social vigente", "Última alteração", "Certidão simplificada"] },
+    { name: "Demandas em andamento", items: [] },
+  ],
+  comercial: [
+    { name: "Dados do cliente", items: ["Contato", "Dados da empresa"] },
+    { name: "Propostas", items: [] },
+    { name: "Contratos", items: [] },
+    { name: "Follow-up", items: [] },
+  ],
   lgpd: [
     {
       name: "Dados da empresa",
@@ -3155,16 +3199,24 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   }
   function addItem() {
     if (!newName.trim()) return;
+    const nome = newName.trim();
+    const agora = new Date().toISOString();
     const item = {
       id: `it${uid()}`,
-      name: newName.trim(),
+      name: nome,
       tipo: newTipo,
       responsavel: newResp.trim(),
-      responsaveis: [],
+      // quem cria ja entra como responsavel
+      responsaveis: currentUser ? [currentUser.id] : [],
       status: "Não iniciado",
-      kanbanStatus: "Suspenso",
+      kanbanStatus: "A Fazer",
       obs: "",
       prazo: "",
+      dataInicio: todayBR(),
+      criadoEm: agora,
+      statusChangedAt: agora,
+      // demandas conhecidas ja trazem a checklist pronta
+      checklist: checklistTemplateFor(nome).map((t) => ({ id: `ck${uid()}`, text: t, done: false })),
     };
     setPlanos((planos) => updateItemsAndResort(planos, planoId, (items) => [...items, item]));
     setNewName("");
@@ -5306,6 +5358,9 @@ const NAV = [
     color: "#10B981",
     view: { page: "area", areaId: "lgpd" },
   },
+  { id: "inpi", label: "INPI & Marcas", Icon: Stamp, color: "#F59E0B", view: { page: "area", areaId: "inpi" } },
+  { id: "societario", label: "Societário", Icon: Scale, color: "#8B5CF6", view: { page: "area", areaId: "societario" } },
+  { id: "comercial", label: "Comercial", Icon: Handshake, color: "#EC4899", view: { page: "area", areaId: "comercial" } },
   {
     id: "produtos",
     label: "Produtos & Soluções",
@@ -5322,7 +5377,8 @@ function navActiveId(view) {
   return "";
 }
 
-const ALL_MODULES = ["compliance", "lgpd", "produtos"];
+// Derivado do registro de areas: um quadro novo entra aqui sozinho.
+const ALL_MODULES = [...AREA_IDS, "produtos"];
 
 function allowedModulesFor(profile) {
   return Array.isArray(profile?.allowed_modules) && profile.allowed_modules.length
@@ -5404,10 +5460,20 @@ export default function App() {
         .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
-        remoteRef.current = true;
-        setDataState(row.data);
-        dataRef.current = row.data;
-        lastSentJsonRef.current = JSON.stringify(row.data);
+        const reconciliado = ensureAreas(row.data);
+        setDataState(reconciliado);
+        dataRef.current = reconciliado;
+        if (reconciliado !== row.data) {
+          // quadros novos entraram: persiste para os demais usuarios
+          lastSentJsonRef.current = JSON.stringify(reconciliado);
+          await supabase
+            .from("dashboard_state")
+            .update({ data: reconciliado, updated_at: new Date().toISOString() })
+            .eq("id", ROW_ID);
+        } else {
+          remoteRef.current = true;
+          lastSentJsonRef.current = JSON.stringify(row.data);
+        }
       } else {
         await supabase.from("dashboard_state").insert({ id: ROW_ID, data: INIT });
         dataRef.current = INIT;
@@ -5661,6 +5727,21 @@ export default function App() {
                 >
                   <LayoutDashboard size={14} /> Quadro Geral
                 </button>
+                <button
+                  onClick={() => setDashTab("relatorios")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                    border: "none",
+                    borderBottom: dashTab === "relatorios" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    background: "transparent",
+                    color: dashTab === "relatorios" ? "#0DD3C5" : "#64748B",
+                    fontSize: 13,
+                    fontWeight: dashTab === "relatorios" ? 700 : 500,
+                    cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                  }}
+                >
+                  <BarChart3 size={14} /> Relatórios
+                </button>
               </div>
               {dashTab === "painel" && (
                 <div style={{ padding: "40px 44px" }}>
@@ -5679,6 +5760,7 @@ export default function App() {
                   allowedModules={allowedModules}
                 />
               )}
+              {dashTab === "relatorios" && <Relatorios />}
             </div>
           )}
           {view.page !== "dashboard" && (
