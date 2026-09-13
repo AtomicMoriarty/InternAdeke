@@ -10,6 +10,7 @@ import {
   Paperclip,
   Tag,
   Edit3,
+  ListChecks,
   Trash2,
   ChevronDown,
   Maximize2,
@@ -26,7 +27,7 @@ import {
   type NotifContext,
 } from "@/lib/notifications";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
-import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
+import MentionTextarea, { MentionText } from "@/components/MentionTextarea";
 import { moduloOf } from "@/lib/areas";
 import type {
   Area,
@@ -42,6 +43,7 @@ import type {
 } from "@/lib/dashboardTypes";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
 import { trajetoriaDoItem } from "@/lib/relatorios";
+import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
 import {
   enviarAnexo,
@@ -384,16 +386,120 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
       autor_id: currentUser?.id || null,
       autor_nome: meName,
     };
-    patchItem({ comentarios: [...(item.comentarios || []), entry] });
+    const cmd = interpretarTexto(txt, profiles);
+    // O comando não fica no texto salvo: já foi executado, virou ruído.
+    patchItem({ comentarios: [...(item.comentarios || []), { ...entry, text: cmd.textoLimpo }] });
     setCommentDraft("");
+
+    if (cmd.ehTarefa) criarTarefaDoTexto(cmd, entry.id);
     if (currentUser) {
-      const mentioned = extractMentions(txt, profiles).map((p) => p.id);
       emitNotifications({
-        ctx: { ...ctx, trecho: txt },
-        mentionedIds: mentioned,
+        ctx: { ...ctx, trecho: cmd.textoLimpo },
+        mentionedIds: cmd.mencionados,
         responsibleIds: item.responsaveis || [],
       });
     }
+  }
+
+  /**
+   * Texto livre que foi editado e salvo: descrição, comentário corrigido.
+   *
+   * Só reage ao que mudou nesta edição — quem já estava mencionado antes não
+   * é avisado de novo, e o !task só roda quando acabou de ser escrito.
+   */
+  function confirmarTexto(
+    depois: string,
+    antes: string,
+    opts: {
+      trecho?: string;
+      origemId?: string;
+      permitirTarefa?: boolean;
+      /** Regrava o texto sem o comando, depois que ele foi executado. */
+      aoLimpar?: (textoLimpo: string) => void;
+    } = {},
+  ) {
+    const cmd = diferencaDeTexto(antes, depois, profiles);
+    if (!temAlgoAFazer(cmd)) return;
+    if (cmd.ehTarefa && opts.permitirTarefa !== false) {
+      criarTarefaDoTexto(cmd, opts.origemId);
+      if (cmd.textoLimpo !== depois) opts.aoLimpar?.(cmd.textoLimpo);
+    }
+    if (currentUser && cmd.mencionados.length) {
+      emitNotifications({
+        ctx: { ...ctx, trecho: opts.trecho || cmd.textoLimpo },
+        mentionedIds: cmd.mencionados,
+        responsibleIds: [],
+      });
+    }
+  }
+
+  /**
+   * Cria um card irmão a partir de um texto com !task.
+   *
+   * Nasce no mesmo plano do card de origem: é o lugar onde a pessoa vai
+   * procurar. Produtos guardam itens num nível só, então lá o irmão entra no
+   * próprio produto.
+   */
+  function criarTarefaDoTexto(cmd: ReturnType<typeof interpretarTexto>, origemId?: string) {
+    const nova = tarefaDeTexto(cmd, currentUser?.id || null, {
+      descricaoOrigem: `criada a partir de "${item.name}"`,
+      origemId,
+    });
+
+    update((prev: DashboardState) => {
+      if (ehProduto) {
+        return {
+          ...prev,
+          produtos: (prev.produtos || []).map((p: Produto) =>
+            p.id !== clienteId ? p : { ...p, items: [...(p.items || []), nova] },
+          ),
+        };
+      }
+      return {
+        ...prev,
+        areas: (prev.areas || []).map((a: Area) =>
+          a.id !== areaId
+            ? a
+            : {
+                ...a,
+                clientes: (a.clientes || []).map((c: Cliente) =>
+                  c.id !== clienteId
+                    ? c
+                    : {
+                        ...c,
+                        planos: (c.planos || []).map((pl: Plano) =>
+                          pl.id !== planoId ? pl : { ...pl, items: [...(pl.items || []), nova] },
+                        ),
+                      },
+                ),
+              },
+        ),
+      };
+    });
+
+    // Quem recebeu a tarefa precisa saber que ela existe.
+    emitAtribuicao({
+      newIds: nova.responsaveis || [],
+      oldIds: [],
+      ctx: {
+        ...ctx,
+        item_id: nova.id,
+        item_nome: nova.name,
+        trecho: `Nova tarefa criada a partir de um comentário em "${item.name}"`,
+      },
+    });
+  }
+
+  /**
+   * O botão que faz o mesmo que o !task.
+   *
+   * A sintaxe serve para quem já pegou o jeito e escreve tudo de uma vez; o
+   * botão serve para quem não sabe que ela existe, e para o comentário que
+   * só depois virou tarefa.
+   */
+  function virarTarefa(c: Comentario) {
+    const cmd = interpretarTexto(c.text || "", profiles);
+    criarTarefaDoTexto({ ...cmd, ehTarefa: true }, c.id);
   }
 
   function startEditComment(comment: Comentario) {
@@ -404,13 +510,20 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   function saveCommentEdit() {
     const txt = editingCommentText.trim();
     if (!editingCommentId || !txt) return;
+    const antes = (item.comentarios || []).find((c: Comentario) => c.id === editingCommentId);
+    const cmd = diferencaDeTexto(antes?.text || "", txt, profiles);
     patchItem({
       comentarios: (item.comentarios || []).map((c: Comentario) =>
-        c.id === editingCommentId ? { ...c, text: txt, updated_at: new Date().toISOString() } : c,
+        c.id === editingCommentId
+          ? { ...c, text: cmd.textoLimpo, updated_at: new Date().toISOString() }
+          : c,
       ),
     });
     setEditingCommentId(null);
     setEditingCommentText("");
+    // Mencionar alguém ao corrigir um comentário avisa igual: o texto mudou
+    // depois que a pessoa já leu (ou nem leu) o original.
+    confirmarTexto(txt, antes?.text || "", { origemId: editingCommentId });
   }
 
   function deleteComment(id: string) {
@@ -1182,7 +1295,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               <MentionTextarea
                 value={item.descricao || ""}
                 onChange={(value) => patchItem({ descricao: value })}
-                placeholder="Adicione uma descrição detalhada..."
+                onConfirm={(depois, antes) =>
+                  confirmarTexto(depois, antes, {
+                    trecho: `Mencionou você na descrição de "${item.name}"`,
+                    aoLimpar: (limpo) => patchItem({ descricao: limpo }),
+                  })
+                }
+                placeholder="Adicione uma descrição detalhada... use @ para mencionar e !task para virar tarefa"
                 rows={3}
               />
             </div>
@@ -1582,9 +1701,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                           {c.created_at ? timeAgo(c.created_at) : c.date}
                         </span>
                         <button
+                          onClick={() => virarTarefa(c)}
+                          title="Transformar este comentário em tarefa"
+                          style={{ ...miniTextBtn, marginLeft: "auto" }}
+                        >
+                          <ListChecks size={11} />
+                        </button>
+                        <button
                           onClick={() => startEditComment(c)}
                           title="Editar comentário"
-                          style={{ ...miniTextBtn, marginLeft: "auto" }}
+                          style={miniTextBtn}
                         >
                           <Edit3 size={11} />
                         </button>

@@ -5,6 +5,14 @@ type Props = {
   value: string;
   onChange: (v: string) => void;
   onSubmit?: () => void;
+  /**
+   * Chamado ao sair do campo, com o texto final e como ele estava ao entrar.
+   *
+   * Existe para os campos que salvam a cada tecla: é aqui que se avisa quem
+   * foi mencionado e se executa o !task, uma vez só, quando a pessoa
+   * terminou de escrever — e não a cada letra digitada.
+   */
+  onConfirm?: (depois: string, antes: string) => void;
   placeholder?: string;
   rows?: number;
   style?: React.CSSProperties;
@@ -14,6 +22,7 @@ export default function MentionTextarea({
   value,
   onChange,
   onSubmit,
+  onConfirm,
   placeholder,
   rows = 2,
   style,
@@ -24,6 +33,8 @@ export default function MentionTextarea({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  // Como o texto estava quando a pessoa entrou no campo.
+  const aoFocarRef = useRef(value);
 
   useEffect(() => {
     if (document.activeElement !== ref.current && value !== draft) {
@@ -85,8 +96,14 @@ export default function MentionTextarea({
           onChange(next);
           check(next, e.target.selectionStart || 0);
         }}
+        onFocus={() => {
+          aoFocarRef.current = draft;
+        }}
         onBlur={() => {
           if (draft !== value) onChange(draft);
+          const antes = aoFocarRef.current;
+          aoFocarRef.current = draft;
+          if (onConfirm && draft !== antes) onConfirm(draft, antes);
         }}
         onKeyDown={(e) => {
           if (open && filtered.length) {

@@ -38,7 +38,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { Item } from "@/lib/dashboardTypes";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
-import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
+import MentionTextarea, { MentionText } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
 import Gantt from "@/components/Gantt";
 import TemplatesModal from "@/components/TemplatesModal";
@@ -55,9 +55,11 @@ import {
   allowedModulesFor,
   moduloOf as moduloOfArea,
   checklistTemplateFor,
+  MODULO_PRODUTOS,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
+import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
@@ -1994,14 +1996,46 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
       return moveInArray(planos, idx, dir);
     });
   }
+  function ctxDoPlano(plano, trecho) {
+    return {
+      cliente_id: cliente.id,
+      cliente_nome: cliente.name,
+      modulo: moduloOf(areaId),
+      plano_id: plano.id,
+      plano_nome: plano.name,
+      autor_id: me?.id || null,
+      autor_nome: profiles.find((p) => p.id === me?.id)?.display_name || "Usuário",
+      trecho,
+    };
+  }
+
+  /** Cria o card do !task dentro do próprio plano onde a nota foi escrita. */
+  function criarTarefaNoPlano(plano, cmd, origem) {
+    const nova = tarefaDeTexto(cmd, me?.id || null, origem);
+    updatePlanos((planos) =>
+      planos.map((p) => (p.id !== plano.id ? p : { ...p, items: [...(p.items || []), nova] })),
+    );
+    emitAtribuicao({
+      newIds: nova.responsaveis || [],
+      oldIds: [],
+      ctx: {
+        ...ctxDoPlano(plano, `Nova tarefa criada a partir de uma nota em "${plano.name}"`),
+        item_id: nova.id,
+        item_nome: nova.name,
+      },
+    });
+  }
+
   function addNota(plano) {
     const txt = (notaDraft[plano.id] || "").trim();
     if (!txt) return;
     const meName = profiles.find((p) => p.id === me?.id)?.display_name || "Usuário";
+    const cmd = interpretarTexto(txt, profiles);
     const entry = {
       id: `n${uid()}`,
       date: todayBR(),
-      text: txt,
+      // Sem o comando: ele já foi executado, no texto vira ruído.
+      text: cmd.textoLimpo,
       autor_id: me?.id || null,
       autor_nome: meName,
     };
@@ -2009,22 +2043,18 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
       planos.map((p) => (p.id !== plano.id ? p : { ...p, notas: [...(p.notas || []), entry] })),
     );
     setNotaDraft((d) => ({ ...d, [plano.id]: "" }));
-    // Emit notifications
+
+    if (cmd.ehTarefa) {
+      criarTarefaNoPlano(plano, cmd, {
+        descricaoOrigem: `criada a partir de uma nota em "${plano.name}"`,
+        origemId: entry.id,
+      });
+    }
     if (me) {
-      const mentioned = extractMentions(txt, profiles).map((p) => p.id);
       const resp = [...(plano.responsaveis || []), ...(cliente.responsaveis || [])];
       emitNotifications({
-        ctx: {
-          cliente_id: cliente.id,
-          cliente_nome: cliente.name,
-          modulo: moduloOf(areaId),
-          plano_id: plano.id,
-          plano_nome: plano.name,
-          autor_id: me.id,
-          autor_nome: meName,
-          trecho: txt,
-        },
-        mentionedIds: mentioned,
+        ctx: ctxDoPlano(plano, cmd.textoLimpo),
+        mentionedIds: cmd.mencionados,
         responsibleIds: resp,
       });
     }
@@ -2599,7 +2629,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                         value={notaDraft[plano.id] || ""}
                         onChange={(v) => setNotaDraft((d) => ({ ...d, [plano.id]: v }))}
                         onSubmit={() => addNota(plano)}
-                        placeholder="Nova nota... use @ para mencionar"
+                        placeholder="Nova nota... @ para mencionar, !task para virar tarefa"
                       />
                       <button
                         onClick={() => addNota(plano)}
@@ -3293,6 +3323,50 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
       ),
     );
   }
+  /**
+   * A observação do card também aceita @ e !task.
+   *
+   * Ela salva a cada tecla, então só reage ao sair do campo, e só ao que
+   * mudou nesta edição — quem já estava mencionado antes não é avisado de novo.
+   */
+  function confirmarObs(item, depois, antes) {
+    const cmd = diferencaDeTexto(antes, depois, allProfiles);
+    if (!temAlgoAFazer(cmd)) return;
+    const ctx = {
+      cliente_id: cliente.id,
+      cliente_nome: cliente.name,
+      modulo: moduloOf(areaId),
+      plano_id: planoId,
+      plano_nome: plano?.name || "",
+      item_id: item.id,
+      item_nome: item.name,
+      autor_id: currentUser?.id || null,
+      autor_nome: currentProfile?.display_name || currentUser?.email || "Alguém",
+      trecho: cmd.textoLimpo,
+    };
+    if (cmd.ehTarefa) {
+      const nova = tarefaDeTexto(cmd, currentUser?.id || null, {
+        descricaoOrigem: `criada a partir da observação de "${item.name}"`,
+        origemId: item.id,
+      });
+      setPlanos((planos) => updateItemsAndResort(planos, planoId, (items) => [...items, nova]));
+      updateItem(item.id, "obs", cmd.textoLimpo);
+      emitAtribuicao({
+        newIds: nova.responsaveis || [],
+        oldIds: [],
+        ctx: {
+          ...ctx,
+          item_id: nova.id,
+          item_nome: nova.name,
+          trecho: `Nova tarefa criada a partir de "${item.name}"`,
+        },
+      });
+    }
+    if (currentUser && cmd.mencionados.length) {
+      emitNotifications({ ctx, mentionedIds: cmd.mencionados, responsibleIds: [] });
+    }
+  }
+
   function setItemStatus(item, val) {
     updateItem(item.id, "kanbanStatus", val);
     emitMudancaStatus({
@@ -3816,7 +3890,8 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
                 <MentionTextarea
                   value={item.obs || ""}
                   onChange={(value) => updateItem(item.id, "obs", value)}
-                  placeholder="Observação..."
+                  onConfirm={(depois, antes) => confirmarObs(item, depois, antes)}
+                  placeholder="Observação... @ menciona, !task vira tarefa"
                   rows={1}
                 />
 
@@ -4577,6 +4652,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
   const prod = data.produtos.find((p) => p.id === prodId);
   const isComercial = isCommercialProduct(prod);
   const profiles = useProfiles();
+  const me = useCurrentUser();
   const [tab, setTab] = useState(isComercial ? "notas" : "roadmap");
   const [newInfoCampo, setNewInfoCampo] = useState("");
   const [newInfoValor, setNewInfoValor] = useState("");
@@ -4705,13 +4781,57 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
       ),
     }));
 
+  // Um produto guarda seus itens num nível só: faz papel de cliente e de plano
+  // ao mesmo tempo, e é isso que vai no contexto da notificação.
+  const ctxDoProduto = (trecho, extra = {}) => ({
+    cliente_id: prod.id,
+    cliente_nome: prod.name,
+    modulo: MODULO_PRODUTOS,
+    plano_id: prod.id,
+    plano_nome: prod.name,
+    autor_id: me?.id || null,
+    autor_nome: profiles.find((p) => p.id === me?.id)?.display_name || "Usuário",
+    trecho,
+    ...extra,
+  });
+
+  /** Avisa os mencionados e, se pediram !task, cria o card dentro do produto. */
+  const reagirAoTexto = (cmd, origem) => {
+    if (!temAlgoAFazer(cmd)) return;
+    if (cmd.ehTarefa) {
+      const nova = tarefaDeTexto(cmd, me?.id || null, origem);
+      setData((dd) => ({
+        ...dd,
+        produtos: dd.produtos.map((p) =>
+          p.id !== prodId ? p : { ...p, items: [...(p.items || []), nova] },
+        ),
+      }));
+      emitAtribuicao({
+        newIds: nova.responsaveis || [],
+        oldIds: [],
+        ctx: ctxDoProduto(`Nova tarefa criada em "${prod.name}"`, {
+          item_id: nova.id,
+          item_nome: nova.name,
+        }),
+      });
+    }
+    if (me && cmd.mencionados.length) {
+      emitNotifications({
+        ctx: ctxDoProduto(cmd.textoLimpo),
+        mentionedIds: cmd.mencionados,
+        responsibleIds: [],
+      });
+    }
+  };
+
   // Notas
   const addNota = () => {
     if (!newNotaTitulo.trim() && !newNotaTexto.trim()) return;
+    const cmd = interpretarTexto(newNotaTexto.trim(), profiles);
     const nota = {
       id: `nota${uid()}`,
       titulo: newNotaTitulo.trim() || (isComercial ? "Ata sem título" : "Sem título"),
-      texto: newNotaTexto.trim(),
+      texto: cmd.textoLimpo,
       data: new Date().toLocaleDateString("pt-BR"),
       tipo: isComercial ? "ata" : "nota",
       createdAt: new Date().toISOString(),
@@ -4726,6 +4846,10 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
     }));
     setNewNotaTitulo("");
     setNewNotaTexto("");
+    reagirAoTexto(cmd, {
+      descricaoOrigem: `criada a partir de "${nota.titulo}" em ${prod.name}`,
+      origemId: nota.id,
+    });
   };
   const removeNota = (id) =>
     setData((dd) => ({
@@ -4847,6 +4971,13 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                 <MentionTextarea
                   value={prod.descricao}
                   onChange={(value) => upd("descricao", value)}
+                  onConfirm={(depois, antes) => {
+                    const cmd = diferencaDeTexto(antes, depois, profiles);
+                    if (cmd.ehTarefa) upd("descricao", cmd.textoLimpo);
+                    reagirAoTexto(cmd, {
+                      descricaoOrigem: `criada a partir da descrição de ${prod.name}`,
+                    });
+                  }}
                   style={{
                     background: "none",
                     border: "none",
@@ -5321,7 +5452,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
               placeholder={
                 isComercial
                   ? "Cole a ata da reunião comercial aqui. Inclua encaminhamentos, responsáveis e prazos para gerar tasks."
-                  : "Escreva sua nota, observação ou informação importante..."
+                  : "Escreva sua nota... @ menciona, !task vira tarefa"
               }
               rows={isComercial ? 12 : 4}
               style={{
@@ -5433,6 +5564,14 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                     <MentionTextarea
                       value={nota.texto}
                       onChange={(value) => updateNotaTexto(nota.id, value)}
+                      onConfirm={(depois, antes) => {
+                        const cmd = diferencaDeTexto(antes, depois, profiles);
+                        if (cmd.ehTarefa) updateNotaTexto(nota.id, cmd.textoLimpo);
+                        reagirAoTexto(cmd, {
+                          descricaoOrigem: `criada a partir de "${nota.titulo}" em ${prod.name}`,
+                          origemId: nota.id,
+                        });
+                      }}
                       rows={isComercial ? (ataExpanded ? 30 : 12) : 3}
                       style={{
                         minHeight: isComercial ? (ataExpanded ? 620 : 260) : 90,
