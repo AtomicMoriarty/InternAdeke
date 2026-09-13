@@ -31,3 +31,8 @@ dist-ssr
 *.sln
 *.sw?
 .wrangler
+
+# variaveis locais de desenvolvimento
+.env
+.env.local
+.env.*.local

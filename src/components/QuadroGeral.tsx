@@ -380,12 +380,19 @@ function KanbanCard({
   onClick,
   onDragStart,
   onDragEnd,
+  // Estas duas vêm do modo de seleção em lote. Estavam sendo passadas pelo
+  // pai e nunca declaradas aqui, o que derrubava o Quadro Geral inteiro no
+  // primeiro card renderizado.
+  modoSelecao = false,
+  selecionado = false,
 }: {
   card: FlatCard;
   profiles: Profile[];
   onClick: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  modoSelecao?: boolean;
+  selecionado?: boolean;
 }) {
   const moduloColor = MODULO_COLOR[card.modulo];
   const resps = (card.responsaveis || [])
@@ -430,8 +437,11 @@ function KanbanCard({
         }
       }}
       style={{
-        background: "#fff",
-        border: "1px solid #E2E8F0",
+        // Sem marca visível, o modo de seleção não dizia o que estava marcado:
+        // só o leitor de tela sabia, pelo aria-pressed.
+        background: selecionado ? "#F0FDFA" : "#fff",
+        border: `1px solid ${selecionado ? "#0DD3C5" : "#E2E8F0"}`,
+        boxShadow: selecionado ? "0 0 0 1px #0DD3C5" : "none",
         borderRadius: 10,
         padding: 10,
         cursor: "pointer",
@@ -594,12 +604,18 @@ function FiltersBar({
   opts,
   profiles,
   counts,
+  // O pai já passava as duas, mas elas não estavam declaradas aqui e o botão
+  // nunca chegou a ser desenhado — a edição em lote existia sem porta de entrada.
+  modoSelecao = false,
+  onToggleSelecao,
 }: {
   filters: Filters;
   setFilters: (n: Partial<Filters>) => void;
   opts: { clientes: { id: string; name: string }[]; planos: { id: string; name: string }[] };
   profiles: Profile[];
   counts: { total: number; all: number };
+  modoSelecao?: boolean;
+  onToggleSelecao?: () => void;
 }) {
   return (
     <div
@@ -650,6 +666,36 @@ function FiltersBar({
         onChange={(v) => setFilters({ responsaveis: v })}
         searchable
       />
+      {onToggleSelecao && (
+        <button
+          onClick={onToggleSelecao}
+          title={
+            modoSelecao
+              ? "Sair do modo de seleção"
+              : "Selecionar vários cards para editar de uma vez"
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            marginLeft: "auto",
+            background: modoSelecao ? "#0DD3C5" : "#fff",
+            border: `1px solid ${modoSelecao ? "#0DD3C5" : "#E2E8F0"}`,
+            color: modoSelecao ? "#fff" : "#475569",
+            borderRadius: 8,
+            padding: "7px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <CheckSquare size={14} />
+          {modoSelecao ? "Sair da seleção" : "Selecionar vários"}
+        </button>
+      )}
+
       <MultiPicker
         label="Status"
         items={KANBAN_COLUMNS.map((s) => ({ id: s, label: s }))}
