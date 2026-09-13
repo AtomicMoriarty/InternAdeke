@@ -369,13 +369,78 @@ export function lerTranscricao(texto: string, profiles: Profile[] = []): Leitura
   return { falas, participantes, compromissos, decisoes, semFalante, observacoes };
 }
 
-/** Monta as linhas de encaminhamento, no formato que o gerador de tarefas lê. */
-export function linhasDeEncaminhamento(sugestoes: Sugestao[], profiles: Profile[]): string {
-  return sugestoes
-    .map((s) => {
-      const p = s.responsavelId ? profiles.find((x) => x.id === s.responsavelId) : null;
-      const arroba = p?.username ? ` @${p.username}` : "";
-      return `- ${s.texto}${arroba}`;
-    })
-    .join("\n");
+// ─── Data dita em voz alta ───────────────────────────────────────────────────
+//
+// "até sexta" só vira data se você souber que dia foi a reunião. Por isso a
+// conversão mora aqui e recebe a data da reunião como referência — e o
+// resultado é sugestão, que a pessoa confirma na tabela antes de virar card.
+
+const DIAS_DA_SEMANA: Record<string, number> = {
+  domingo: 0,
+  segunda: 1,
+  terca: 2,
+  quarta: 3,
+  quinta: 4,
+  sexta: 5,
+  sabado: 6,
+};
+
+function paraBR(d: Date) {
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+function somarDias(d: Date, n: number) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+/** Próxima ocorrência do dia da semana, contando o próprio dia da referência. */
+function proximoDiaDaSemana(ref: Date, alvo: number) {
+  const delta = (alvo - ref.getDay() + 7) % 7;
+  return somarDias(ref, delta);
+}
+
+/**
+ * Converte o prazo dito em data, usando o dia da reunião como referência.
+ *
+ * Devolve "" quando não dá para ter certeza — data errada num card é pior do
+ * que card sem data, porque ninguém desconfia dela.
+ */
+export function dataSugerida(prazoTexto: string, referencia: Date = new Date()): string {
+  const t = semAcento(prazoTexto);
+  if (!t) return "";
+
+  if (/\bhoje\b/.test(t)) return paraBR(referencia);
+  if (/\bamanha\b/.test(t)) return paraBR(somarDias(referencia, 1));
+  if (/semana que vem|proxima semana/.test(t)) return paraBR(somarDias(referencia, 7));
+  if (/fim da semana|final da semana/.test(t)) return paraBR(proximoDiaDaSemana(referencia, 5));
+
+  // "até 20/10/2026", "até 20/10", "até o dia 20"
+  const comData = t.match(/(\d{1,2})(?:\/(\d{1,2})(?:\/(\d{2,4}))?)?/);
+  if (comData && /\d/.test(t)) {
+    const dia = Number(comData[1]);
+    if (dia >= 1 && dia <= 31) {
+      const mes = comData[2] ? Number(comData[2]) - 1 : referencia.getMonth();
+      let ano = comData[3]
+        ? Number(comData[3]) < 100
+          ? 2000 + Number(comData[3])
+          : Number(comData[3])
+        : referencia.getFullYear();
+      const alvo = new Date(ano, mes, dia);
+      // Dia sem mês que já passou é do mês seguinte: "até o dia 5" dito no dia 20.
+      if (!comData[2] && alvo < referencia) {
+        alvo.setMonth(alvo.getMonth() + 1);
+        ano = alvo.getFullYear();
+      }
+      // Guarda contra "31 de fevereiro" e afins.
+      if (alvo.getDate() !== dia) return "";
+      return paraBR(alvo);
+    }
+  }
+
+  for (const [nome, num] of Object.entries(DIAS_DA_SEMANA)) {
+    if (new RegExp(`\\b${nome}`).test(t)) return paraBR(proximoDiaDaSemana(referencia, num));
+  }
+  return "";
 }

@@ -309,6 +309,66 @@ export function planejarTarefas(
   };
 }
 
+/**
+ * Uma linha do relatório de validação, já conferida por alguém.
+ *
+ * Existe porque a leitura da transcrição chuta e às vezes chuta errado — ela
+ * pode entender que a tarefa é do Heitor quando quem falou foi o Bruno. Aqui
+ * os campos já passaram pelo olho humano, então o card nasce com o que foi
+ * confirmado, não com o palpite.
+ */
+export type TarefaValidada = {
+  texto: string;
+  responsaveis: string[];
+  /** DD/MM/AAAA. */
+  dataInicio?: string;
+  prazo?: string;
+  /** A frase como foi dita e por quem, para o card guardar a origem. */
+  ditoPor?: string;
+  fraseOriginal?: string;
+};
+
+/** Monta os cards do relatório validado, sem tocar no estado. */
+export function planejarValidadas(
+  reuniao: Reuniao,
+  tarefas: TarefaValidada[],
+  agora: Date = new Date(),
+): PlanoDeGeracao {
+  const alvoId =
+    reuniao.tipo === "interna" || !reuniao.clienteId ? CLIENTE_INTERNO : reuniao.clienteId;
+  const iso = agora.toISOString();
+
+  const cards: Item[] = tarefas
+    .filter((t) => t.texto.trim())
+    .map((t) => {
+      const origem =
+        t.fraseOriginal && t.fraseOriginal !== t.texto
+          ? `\n\nNa transcrição: "${t.fraseOriginal}"`
+          : "";
+      const quem = t.ditoPor ? ` (dito por ${t.ditoPor})` : "";
+      return {
+        id: idCurto("it"),
+        name: t.texto.trim().slice(0, 180),
+        tipo: "Outro",
+        responsavel: "",
+        responsaveis: t.responsaveis || [],
+        status: "Não iniciado",
+        kanbanStatus: "A Fazer",
+        obs: "",
+        descricao: `Encaminhamento da reunião "${reuniao.titulo}" (${reuniao.data})${quem}.${origem}`,
+        prazo: t.prazo || "",
+        dataInicio: t.dataInicio || reuniao.data || dataBR(agora),
+        criadoEm: iso,
+        statusChangedAt: iso,
+        checklist: [],
+        etiquetas: [],
+        [CAMPO_ORIGEM]: reuniao.id,
+      } as Item;
+    });
+
+  return { cards, repetidas: 0, alvoId };
+}
+
 /** Grava os cards planejados e anota os ids na reunião. */
 export function aplicarTarefas(
   data: DashboardState,

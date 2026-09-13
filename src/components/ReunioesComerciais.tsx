@@ -25,6 +25,7 @@ import {
   salvarReuniao,
   removerReuniao,
   planejarTarefas,
+  planejarValidadas,
   aplicarTarefas,
   tarefasDoTexto,
   tarefasDaReuniao,
@@ -40,7 +41,8 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea from "@/components/MentionTextarea";
 import ItemModal from "@/components/ItemModal";
 import { emitAtribuicao } from "@/lib/notifications";
-import { lerTranscricao, linhasDeEncaminhamento, type Sugestao } from "@/lib/transcricao";
+import { lerTranscricao, dataSugerida, type Sugestao } from "@/lib/transcricao";
+import { parseBR } from "@/lib/relatorios";
 
 type Props = {
   data: DashboardState;
@@ -84,6 +86,64 @@ export default function ReunioesComerciais({ data, setData }: Props) {
    * Avisa quem ficou responsável — sem isso a pessoa só descobriria a tarefa
    * abrindo a própria página, que é como as atas antigas funcionavam.
    */
+  /**
+   * Cria os cards do relatório já conferido.
+   *
+   * Salva a reunião junto: quem está validando ainda está no formulário, e
+   * perder o que foi escrito por causa da ordem dos botões seria burrice.
+   */
+  function criarValidadas(linhas: LinhaValidacao[]) {
+    const r = editando;
+    if (!r || !linhas.length) return;
+
+    const plano = planejarValidadas(
+      r,
+      linhas.map((l) => ({
+        texto: l.texto,
+        responsaveis: l.responsaveis,
+        dataInicio: l.dataInicio,
+        prazo: l.prazo,
+        ditoPor: l.falante,
+        fraseOriginal: l.fraseOriginal,
+      })),
+    );
+    if (!plano.cards.length) return;
+
+    setData((d) => aplicarTarefas(salvarReuniao(d, r), r, plano));
+    avisarResponsaveis(plano.cards, r, plano.alvoId);
+    setEditando(null);
+    setAberta(r.id);
+    setAviso(
+      `${plano.cards.length} tarefa(s) criada(s) a partir da transcrição, com os responsáveis avisados.`,
+    );
+  }
+
+  /** Todo card criado por aqui avisa quem ficou com ele. */
+  function avisarResponsaveis(
+    cards: { id: string; name?: unknown; responsaveis?: unknown }[],
+    r: Reuniao,
+    alvoId: string,
+  ) {
+    for (const card of cards) {
+      emitAtribuicao({
+        newIds: (card.responsaveis as string[]) || [],
+        oldIds: [],
+        ctx: {
+          cliente_id: alvoId,
+          cliente_nome: nomeEmpresa(r.clienteId) || "Reuniões internas",
+          modulo: "Comercial",
+          plano_id: "",
+          plano_nome: "Tarefas de reunião",
+          item_id: card.id,
+          item_nome: String(card.name),
+          autor_id: me?.id || null,
+          autor_nome: meuPerfil?.display_name || "sistema",
+          trecho: `Encaminhamento da reunião "${r.titulo}"`,
+        },
+      });
+    }
+  }
+
   function gerar(r: Reuniao) {
     // Planeja primeiro, com os dados desta renderizacao: e assim que se sabe
     // quais cards foram criados para avisar os responsaveis. O updater do React
@@ -101,25 +161,7 @@ export default function ReunioesComerciais({ data, setData }: Props) {
     }
 
     setData((d) => aplicarTarefas(d, r, plano));
-
-    for (const card of plano.cards) {
-      emitAtribuicao({
-        newIds: (card.responsaveis as string[]) || [],
-        oldIds: [],
-        ctx: {
-          cliente_id: plano.alvoId,
-          cliente_nome: nomeEmpresa(r.clienteId) || "Reuniões internas",
-          modulo: "Comercial",
-          plano_id: "",
-          plano_nome: "Tarefas de reunião",
-          item_id: card.id,
-          item_nome: String(card.name),
-          autor_id: me?.id || null,
-          autor_nome: meuPerfil?.display_name || "sistema",
-          trecho: `Encaminhamento da reunião "${r.titulo}"`,
-        },
-      });
-    }
+    avisarResponsaveis(plano.cards, r, plano.alvoId);
 
     setAberta(r.id);
     setAviso(
@@ -164,6 +206,7 @@ export default function ReunioesComerciais({ data, setData }: Props) {
           onMudar={setEditando}
           onSalvar={salvar}
           onCancelar={() => setEditando(null)}
+          onCriarTarefas={criarValidadas}
         />
       )}
 
@@ -385,6 +428,7 @@ function Formulario({
   onMudar,
   onSalvar,
   onCancelar,
+  onCriarTarefas,
 }: {
   reuniao: Reuniao;
   empresas: { id: string; nome: string }[];
@@ -392,6 +436,7 @@ function Formulario({
   onMudar: (r: Reuniao) => void;
   onSalvar: () => void;
   onCancelar: () => void;
+  onCriarTarefas: (linhas: LinhaValidacao[]) => void;
 }) {
   const set = (patch: Partial<Reuniao>) => onMudar({ ...reuniao, ...patch });
   return (
@@ -477,11 +522,8 @@ function Formulario({
             externos: [reuniao.externos, externos.join(", ")].filter(Boolean).join(", "),
           })
         }
-        onUsarEncaminhamentos={(linhas) =>
-          set({
-            encaminhamentos: [reuniao.encaminhamentos, linhas].filter((x) => x?.trim()).join("\n"),
-          })
-        }
+        dataReuniao={reuniao.data}
+        onCriarTarefas={onCriarTarefas}
         onUsarDecisoes={(linhas) =>
           set({ decisoes: [reuniao.decisoes, linhas].filter((x) => x?.trim()).join("\n") })
         }
@@ -543,19 +585,21 @@ function BlocoTranscricao({
   profiles,
   onMudar,
   onUsarParticipantes,
-  onUsarEncaminhamentos,
+  onCriarTarefas,
   onUsarDecisoes,
+  dataReuniao,
 }: {
   valor: string;
   profiles: ReturnType<typeof useProfiles>;
+  dataReuniao: string;
   onMudar: (v: string) => void;
   onUsarParticipantes: (ids: string[], externos: string[]) => void;
-  onUsarEncaminhamentos: (linhas: string) => void;
+  onCriarTarefas: (linhas: LinhaValidacao[]) => void;
   onUsarDecisoes: (linhas: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [leu, setLeu] = useState(false);
-  const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set());
+  const [linhas, setLinhas] = useState<LinhaValidacao[]>([]);
   const [decisoesEscolhidas, setDecisoesEscolhidas] = useState<Set<string>>(new Set());
 
   const leitura = useMemo(() => lerTranscricao(valor, profiles), [valor, profiles]);
@@ -565,7 +609,8 @@ function BlocoTranscricao({
     else n.add(chave);
     return n;
   };
-  const selecionadas: Sugestao[] = leitura.compromissos.filter((c) => escolhidas.has(c.texto));
+  const mudarLinha = (i: number, patch: Partial<LinhaValidacao>) =>
+    setLinhas((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
   return (
     <div style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: 10, marginBottom: 12 }}>
@@ -616,7 +661,7 @@ function BlocoTranscricao({
             <button
               onClick={() => {
                 setLeu(true);
-                setEscolhidas(new Set(leitura.compromissos.map((c) => c.texto)));
+                setLinhas(linhasDeValidacao(leitura.compromissos, dataReuniao));
                 setDecisoesEscolhidas(new Set(leitura.decisoes));
               }}
               disabled={!valor.trim()}
@@ -673,57 +718,114 @@ function BlocoTranscricao({
                 </div>
               )}
 
-              {leitura.compromissos.length > 0 && (
+              {linhas.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
-                  <Rotulo>Compromissos ditos ({leitura.compromissos.length})</Rotulo>
-                  {leitura.compromissos.map((c) => {
-                    const p = c.responsavelId
-                      ? profiles.find((x) => x.id === c.responsavelId)
-                      : null;
-                    return (
-                      <label
-                        key={c.texto}
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "flex-start",
-                          padding: "6px 0",
-                          borderBottom: "1px solid #F8FAFC",
-                          cursor: "pointer",
-                        }}
-                      >
+                  <Rotulo>
+                    Confira antes de criar ({linhas.filter((l) => l.incluir).length} de{" "}
+                    {linhas.length})
+                  </Rotulo>
+                  <p style={{ fontSize: 10, color: "#94A3B8", marginBottom: 8, lineHeight: 1.5 }}>
+                    O responsável é um palpite: eu atribuo a quem falou a frase. Se quem se
+                    comprometeu foi outra pessoa, troque aqui — depois de criado, o card é normal e
+                    aceita comentário, follow-up e próximo passo.
+                  </p>
+
+                  {linhas.map((l, i) => (
+                    <div
+                      key={l.chave}
+                      style={{
+                        border: `1px solid ${l.incluir ? "#E2E8F0" : "#F1F5F9"}`,
+                        borderRadius: 9,
+                        padding: 9,
+                        marginBottom: 7,
+                        background: l.incluir ? "#fff" : "#FAFBFC",
+                        opacity: l.incluir ? 1 : 0.55,
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                         <input
                           type="checkbox"
-                          checked={escolhidas.has(c.texto)}
-                          onChange={() => setEscolhidas((s2) => alternar(s2, c.texto))}
-                          style={{ marginTop: 3, accentColor: "#EC4899" }}
+                          checked={l.incluir}
+                          onChange={() => mudarLinha(i, { incluir: !l.incluir })}
+                          title={l.incluir ? "Não criar esta" : "Criar esta"}
+                          style={{ marginTop: 8, accentColor: "#EC4899" }}
                         />
-                        <span style={{ flex: 1, fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
-                          {c.texto}
-                          <span
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <input
+                            value={l.texto}
+                            onChange={(e) => mudarLinha(i, { texto: e.target.value })}
+                            placeholder="O que precisa ser feito"
+                            style={{ ...campo, width: "100%", fontWeight: 600 }}
+                          />
+                          <div
                             style={{
-                              display: "block",
-                              fontSize: 10,
-                              color: "#94A3B8",
-                              marginTop: 2,
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "center",
+                              flexWrap: "wrap",
+                              marginTop: 6,
                             }}
                           >
-                            {p ? `→ ${p.display_name}` : "sem responsável reconhecido"}
-                            {c.prazo ? ` · ${c.prazo}` : ""}
-                            {c.confianca === "media" ? " · confirme" : ""}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
+                            <ResponsaveisPicker
+                              value={l.responsaveis}
+                              onChange={(ids: string[]) => mudarLinha(i, { responsaveis: ids })}
+                              compact
+                              label="Resp."
+                            />
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 9, color: "#94A3B8", fontWeight: 700 }}>
+                                INÍCIO
+                              </span>
+                              <input
+                                type="date"
+                                value={brParaISO(l.dataInicio)}
+                                onChange={(e) =>
+                                  mudarLinha(i, { dataInicio: isoParaBR(e.target.value) })
+                                }
+                                style={{ ...campo, width: 132, fontSize: 11 }}
+                              />
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 9, color: "#94A3B8", fontWeight: 700 }}>
+                                PRAZO
+                              </span>
+                              <input
+                                type="date"
+                                value={brParaISO(l.prazo)}
+                                onChange={(e) =>
+                                  mudarLinha(i, { prazo: isoParaBR(e.target.value) })
+                                }
+                                style={{ ...campo, width: 132, fontSize: 11 }}
+                              />
+                            </label>
+                          </div>
+                          <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 5 }}>
+                            {l.falante ? `dito por ${l.falante}` : "sem falante identificado"}
+                            {l.prazoDito ? ` · "${l.prazoDito}"` : ""}
+                            {l.confianca === "media" ? " · confirme o responsável" : ""}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
                   <button
-                    onClick={() =>
-                      onUsarEncaminhamentos(linhasDeEncaminhamento(selecionadas, profiles))
-                    }
-                    disabled={!selecionadas.length}
-                    style={{ ...botaoMini, marginTop: 7 }}
+                    onClick={() => onCriarTarefas(linhas.filter((l) => l.incluir))}
+                    disabled={!linhas.some((l) => l.incluir && l.texto.trim())}
+                    style={{
+                      ...botaoMini,
+                      background: linhas.some((l) => l.incluir && l.texto.trim())
+                        ? "#EC4899"
+                        : "#E2E8F0",
+                      color: "#fff",
+                      border: "none",
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
                   >
-                    <ListChecks size={12} /> Usar {selecionadas.length} como encaminhamentos
+                    <ListChecks size={13} /> Criar {linhas.filter((l) => l.incluir).length}{" "}
+                    tarefa(s) e avisar
                   </button>
                 </div>
               )}
@@ -776,6 +878,52 @@ function BlocoTranscricao({
       )}
     </div>
   );
+}
+
+/** Uma linha do relatório: o palpite da leitura, pronto para ser corrigido. */
+type LinhaValidacao = {
+  chave: string;
+  incluir: boolean;
+  texto: string;
+  responsaveis: string[];
+  dataInicio: string;
+  prazo: string;
+  falante: string;
+  prazoDito?: string;
+  confianca: "alta" | "media";
+  fraseOriginal: string;
+};
+
+/**
+ * Transforma o que a transcrição sugeriu em linhas editáveis.
+ *
+ * O início nasce na data da reunião — o compromisso começa quando foi assumido
+ * — e o prazo sai do que foi dito em voz alta, quando dá para converter.
+ */
+function linhasDeValidacao(sugestoes: Sugestao[], dataReuniao: string): LinhaValidacao[] {
+  const ref = parseBR(dataReuniao) || new Date();
+  return sugestoes.map((s, i) => ({
+    chave: `${i}-${s.texto.slice(0, 40)}`,
+    incluir: true,
+    texto: s.texto,
+    responsaveis: s.responsavelId ? [s.responsavelId] : [],
+    dataInicio: dataReuniao || "",
+    prazo: s.prazo ? dataSugerida(s.prazo, ref) : "",
+    falante: s.falante,
+    prazoDito: s.prazo,
+    confianca: s.confianca,
+    fraseOriginal: s.texto,
+  }));
+}
+
+/** O sistema guarda DD/MM/AAAA; o input de data quer AAAA-MM-DD. */
+function brParaISO(br: string) {
+  const m = String(br || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+function isoParaBR(iso: string) {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 
 const etiqueta: CSSProperties = {
