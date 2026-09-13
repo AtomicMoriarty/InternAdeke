@@ -6,7 +6,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Clock, XCircle, RotateCcw, CalendarClock } from "lucide-react";
+import { Clock, XCircle, RotateCcw, CalendarClock, Plus } from "lucide-react";
 import {
   montarFunil,
   negociosDoFunil,
@@ -20,6 +20,14 @@ import {
   formatarValorCurto,
   corDaTemperatura,
   podeVerValores,
+  criarNegocio,
+  empresasDoComercial,
+  lerValor,
+  ETAPAS,
+  TEMPERATURAS,
+  ORIGENS,
+  TEMPERATURA_PADRAO,
+  PRIMEIRA_ETAPA,
   type Negocio,
 } from "@/lib/comercial";
 import type { DashboardState, Area, Cliente, Plano, Item } from "@/lib/dashboardTypes";
@@ -45,6 +53,16 @@ export default function FunilComercial({ data, setData }: Props) {
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
   const [aberto, setAberto] = useState<Negocio | null>(null);
   const [painel, setPainel] = useState<"conversao" | "origem" | "perdidos">("conversao");
+  const [criando, setCriando] = useState(false);
+  const [novo, setNovo] = useState({
+    clienteId: "",
+    nome: "",
+    etapa: PRIMEIRA_ETAPA,
+    valor: "",
+    temperatura: TEMPERATURA_PADRAO,
+    origem: "",
+  });
+  const empresas = useMemo(() => empresasDoComercial(data), [data]);
 
   const negocios = useMemo(() => negociosDoFunil(data), [data]);
   const funil = useMemo(() => montarFunil(negocios), [negocios]);
@@ -101,6 +119,29 @@ export default function FunilComercial({ data, setData }: Props) {
     }));
   }
 
+  function salvarNovo() {
+    if (!novo.clienteId || !novo.nome.trim()) return;
+    setData((d) =>
+      criarNegocio(d, {
+        clienteId: novo.clienteId,
+        nome: novo.nome,
+        etapa: novo.etapa,
+        valor: lerValor(novo.valor),
+        temperatura: novo.temperatura,
+        origem: novo.origem,
+      }),
+    );
+    setNovo({
+      clienteId: novo.clienteId,
+      nome: "",
+      etapa: PRIMEIRA_ETAPA,
+      valor: "",
+      temperatura: TEMPERATURA_PADRAO,
+      origem: "",
+    });
+    setCriando(false);
+  }
+
   function moverPara(n: Negocio, etapaId: string) {
     if (n.etapa === etapaId && !n.perdido) return;
     patchNegocio(n, mudarEtapa(n.item, etapaId));
@@ -110,6 +151,166 @@ export default function FunilComercial({ data, setData }: Props) {
 
   return (
     <div style={{ fontFamily: "Outfit, sans-serif" }}>
+      {/* Criar negócio. Estava faltando: só dava para criar indo em Empresas →
+          cliente → plano → Adicionar item, o que ninguém adivinha estando aqui. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <button
+          onClick={() => {
+            setCriando((v) => !v);
+            if (!novo.clienteId && empresas[0])
+              setNovo((n) => ({ ...n, clienteId: empresas[0].id }));
+          }}
+          disabled={!empresas.length}
+          title={
+            empresas.length
+              ? "Adicionar um negócio ao funil"
+              : "Cadastre uma empresa na aba Empresas primeiro"
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: empresas.length ? "#EC4899" : "#E2E8F0",
+            border: "none",
+            borderRadius: 9,
+            padding: "8px 14px",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: empresas.length ? "pointer" : "not-allowed",
+            fontFamily: "inherit",
+          }}
+        >
+          <Plus size={14} /> Novo negócio
+        </button>
+        {!empresas.length && (
+          <span style={{ fontSize: 11, color: "#94A3B8" }}>
+            Cadastre uma empresa na aba Empresas para começar.
+          </span>
+        )}
+      </div>
+
+      {criando && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #FBCFE8",
+            borderRadius: 12,
+            padding: 14,
+            marginBottom: 16,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+          }}
+        >
+          <Campo rotulo="Empresa">
+            <select
+              value={novo.clienteId}
+              onChange={(e) => setNovo((n) => ({ ...n, clienteId: e.target.value }))}
+              style={{ ...campoBase, width: 190 }}
+            >
+              {empresas.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.nome}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="O que é o negócio">
+            <input
+              value={novo.nome}
+              onChange={(e) => setNovo((n) => ({ ...n, nome: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && salvarNovo()}
+              placeholder="Ex.: Adequação à LGPD"
+              style={{ ...campoBase, width: 230 }}
+            />
+          </Campo>
+          <Campo rotulo="Etapa">
+            <select
+              value={novo.etapa}
+              onChange={(e) => setNovo((n) => ({ ...n, etapa: e.target.value }))}
+              style={{ ...campoBase, width: 150 }}
+            >
+              {ETAPAS.map((et) => (
+                <option key={et.id} value={et.id}>
+                  {et.nome}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          {verValores && (
+            <Campo rotulo="Valor">
+              <input
+                value={novo.valor}
+                onChange={(e) => setNovo((n) => ({ ...n, valor: e.target.value }))}
+                placeholder="45000 ou 45k"
+                style={{ ...campoBase, width: 120 }}
+              />
+            </Campo>
+          )}
+          <Campo rotulo="Temperatura">
+            <select
+              value={novo.temperatura}
+              onChange={(e) => setNovo((n) => ({ ...n, temperatura: e.target.value }))}
+              style={{ ...campoBase, width: 110 }}
+            >
+              {TEMPERATURAS.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nome}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="Origem">
+            <select
+              value={novo.origem}
+              onChange={(e) => setNovo((n) => ({ ...n, origem: e.target.value }))}
+              style={{ ...campoBase, width: 150 }}
+            >
+              <option value="">Não informada</option>
+              {ORIGENS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <button
+            onClick={salvarNovo}
+            disabled={!novo.nome.trim()}
+            style={{
+              background: novo.nome.trim() ? "#0F172A" : "#E2E8F0",
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 16px",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: novo.nome.trim() ? "pointer" : "not-allowed",
+              fontFamily: "inherit",
+            }}
+          >
+            Adicionar
+          </button>
+          <button
+            onClick={() => setCriando(false)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#94A3B8",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: "8px 6px",
+            }}
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
       {/* Números do topo */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <Numero
@@ -620,6 +821,36 @@ function Numero({
     </div>
   );
 }
+
+function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 800,
+          color: "#94A3B8",
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        {rotulo}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const campoBase: CSSProperties = {
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 12,
+  color: "#0F172A",
+  fontFamily: "inherit",
+  outline: "none",
+};
 
 function Vazio({ texto }: { texto: string }) {
   return <p style={{ fontSize: 12, color: "#CBD5E1", fontStyle: "italic" }}>{texto}</p>;

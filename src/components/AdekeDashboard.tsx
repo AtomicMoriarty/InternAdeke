@@ -770,12 +770,11 @@ const TEMPLATES = {
     },
     { name: "Demandas em andamento", items: [] },
   ],
-  comercial: [
-    { name: "Dados do cliente", items: ["Contato", "Dados da empresa"] },
-    { name: "Propostas", items: [] },
-    { name: "Contratos", items: [] },
-    { name: "Follow-up", items: [] },
-  ],
+  // No Comercial, um item e um negocio do funil — por isso este template nao
+  // cria item nenhum. Antes ele semeava "Contato" e "Dados da empresa", que
+  // apareciam como negocios em Prospeccao sem ninguem ter criado. Esses dados
+  // agora moram no cadastro da empresa e na lista de contatos.
+  comercial: [{ name: "Negócios", items: [] }],
   lgpd: [
     {
       name: "Dados da empresa",
@@ -1323,7 +1322,7 @@ function Dashboard({ data, setData, nav, allowedModules = ALL_MODULES }) {
             </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-            {data.produtos.map((p) => {
+            {(data.produtos || []).map((p) => {
               const { total: t, done: d, pct } = prog(p.items);
               return (
                 <div
@@ -1427,7 +1426,7 @@ function Dashboard({ data, setData, nav, allowedModules = ALL_MODULES }) {
             Atualizações recentes
           </p>
           <div style={{ flex: 1, overflowY: "auto", maxHeight: 120, marginBottom: 14 }}>
-            {data.updates.slice(0, 6).map((u) => (
+            {(data.updates || []).slice(0, 6).map((u) => (
               <div
                 key={u.id}
                 style={{ paddingLeft: 12, borderLeft: "2px solid #0DD3C5", marginBottom: 12 }}

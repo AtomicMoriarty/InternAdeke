@@ -86,15 +86,52 @@ export function mudarEtapa(
   const iso = agora.toISOString();
   const historico = Array.isArray(item.etapaHistory) ? (item.etapaHistory as MovimentoEtapa[]) : [];
 
+  // Arrastar de volta logo depois é conserto, não regressão: apaga a ida em vez
+  // de gravar a volta. Sem isso, testar o quadro inflava a conversão para
+  // sempre — cada vai-e-vem contava como uma passagem de verdade pela etapa.
+  const ultimo = historico[historico.length - 1];
+  const desfazendo =
+    ultimo &&
+    ultimo.para === atual &&
+    ultimo.de === novaEtapa &&
+    agora.getTime() - new Date(ultimo.em).getTime() <= JANELA_DESFAZER_MS;
+
   return {
     [CAMPO_ETAPA]: novaEtapa,
     kanbanStatus: def.kanban,
     etapaChangedAt: iso,
-    etapaHistory: [...historico, { de: atual, para: novaEtapa, em: iso }],
+    etapaHistory: desfazendo
+      ? historico.slice(0, -1)
+      : [...historico, { de: atual, para: novaEtapa, em: iso }],
     // Voltar a mexer num negócio dado como perdido o traz de volta ao funil.
     perdidoEm: null,
     motivoPerda: "",
   };
+}
+
+/**
+ * Quanto tempo um movimento continua sendo "desfazível".
+ *
+ * Uma hora: dentro disso, voltar para a etapa anterior é quase sempre corrigir
+ * um arrasto errado. Passado esse tempo, voltar é decisão — o negócio regrediu
+ * de verdade, e isso precisa ficar registrado.
+ */
+export const JANELA_DESFAZER_MS = 60 * 60 * 1000;
+
+/**
+ * Zera o histórico de etapas, mantendo a etapa atual.
+ *
+ * Serve para limpar movimento de teste acumulado. A conversão é calculada em
+ * cima desse histórico, então um card muito mexido distorce o funil inteiro
+ * enquanto há poucos negócios reais.
+ */
+export function limparTrajetoria(agora: Date = new Date()) {
+  return { etapaHistory: [], etapaChangedAt: agora.toISOString() };
+}
+
+/** Quantos movimentos de etapa este negócio acumulou. */
+export function movimentosDoNegocio(item: Item): number {
+  return Array.isArray(item.etapaHistory) ? item.etapaHistory.length : 0;
 }
 
 /** Há quantos dias o negócio está parado nesta etapa. */
@@ -257,6 +294,101 @@ export type Contato = {
 export function contatosDoCliente(cliente: Cliente | null | undefined): Contato[] {
   const lista = cliente?.contatos;
   return Array.isArray(lista) ? (lista as Contato[]) : [];
+}
+
+// ─── Criar negócio ───────────────────────────────────────────────────────────
+//
+// Antes só dava para criar um negócio indo em Empresas → cliente → plano →
+// Adicionar item, o que ninguém adivinha estando no funil. E como o cadastro
+// de empresa criava itens sozinho pelo template, apareciam cards que a pessoa
+// não tinha criado.
+
+/** O plano onde os negócios de uma empresa moram. */
+export const PLANO_NEGOCIOS = "Negócios";
+
+export type NovoNegocio = {
+  clienteId: string;
+  nome: string;
+  etapa?: string;
+  valor?: number;
+  temperatura?: string;
+  origem?: string;
+  responsaveis?: string[];
+};
+
+function idCurto(prefixo: string) {
+  return `${prefixo}${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Cria o negócio dentro da empresa escolhida.
+ *
+ * Se a empresa ainda não tem onde guardar negócios, o plano é criado na hora —
+ * quem está no funil não deveria precisar saber que existe uma camada de plano
+ * embaixo.
+ */
+export function criarNegocio(data: DashboardState, novo: NovoNegocio): DashboardState {
+  const agora = new Date();
+  const iso = agora.toISOString();
+  const etapa = novo.etapa && ETAPA_IDS.includes(novo.etapa) ? novo.etapa : PRIMEIRA_ETAPA;
+
+  const item: Item = {
+    id: idCurto("it"),
+    name: novo.nome.trim(),
+    tipo: "Outro",
+    responsavel: "",
+    responsaveis: novo.responsaveis || [],
+    status: "Não iniciado",
+    kanbanStatus: etapaPorId(etapa)?.kanban || "A Fazer",
+    obs: "",
+    prazo: "",
+    dataInicio: `${String(agora.getDate()).padStart(2, "0")}/${String(agora.getMonth() + 1).padStart(2, "0")}/${agora.getFullYear()}`,
+    criadoEm: iso,
+    statusChangedAt: iso,
+    etapaChangedAt: iso,
+    checklist: [],
+    etiquetas: [],
+    [CAMPO_ETAPA]: etapa,
+    [CAMPO_VALOR]: novo.valor || 0,
+    temperatura: novo.temperatura || TEMPERATURA_PADRAO,
+    origem: novo.origem || "",
+    etapaHistory: [],
+  };
+
+  return {
+    ...data,
+    areas: (data.areas || []).map((a: Area) => {
+      if (a.id !== AREA_COMERCIAL) return a;
+      return {
+        ...a,
+        clientes: (a.clientes || []).map((c: Cliente) => {
+          if (c.id !== novo.clienteId) return c;
+          const planos = (c.planos || []) as Plano[];
+          const alvo = planos.find((pl) => pl.name === PLANO_NEGOCIOS) || planos[0];
+          if (!alvo) {
+            return {
+              ...c,
+              planos: [{ id: idCurto("pl"), name: PLANO_NEGOCIOS, notas: [], items: [item] }],
+            };
+          }
+          return {
+            ...c,
+            planos: planos.map((pl) =>
+              pl.id !== alvo.id ? pl : { ...pl, items: [...(pl.items || []), item] },
+            ),
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/** As empresas do Comercial, para o seletor de novo negócio. */
+export function empresasDoComercial(data: DashboardState): { id: string; nome: string }[] {
+  const area = (data?.areas || []).find((a: Area) => a.id === AREA_COMERCIAL);
+  return ((area?.clientes || []) as Cliente[])
+    .map((c) => ({ id: c.id, nome: c.name || "" }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
 }
 
 // ─── Leitura do funil ────────────────────────────────────────────────────────

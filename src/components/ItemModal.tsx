@@ -55,6 +55,8 @@ import {
   lerValor,
   formatarValor,
   temperaturaDoItem,
+  limparTrajetoria,
+  movimentosDoNegocio,
   TEMPERATURAS,
   ORIGENS,
   podeVerValores,
@@ -126,6 +128,60 @@ const DEADLINE_ALERT_OPTIONS = [
 
 function uid() {
   return `_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Cobre a janela entre abrir o card e o estado dele chegar nesta tela. */
+function ModalCarregando({ carregado, onClose }: { carregado: boolean; onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.5)",
+        zIndex: 3000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "Outfit, sans-serif",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 14,
+          padding: "22px 26px",
+          textAlign: "center",
+          maxWidth: 320,
+        }}
+      >
+        <p style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Abrindo o card...</p>
+        <p style={{ fontSize: 11, color: "#64748B", marginTop: 6, lineHeight: 1.5 }}>
+          {carregado
+            ? "Se acabou de criar, aguarde um instante: o card esta sendo salvo."
+            : "Carregando os dados."}
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 14,
+            background: "#F8FAFC",
+            border: "1px solid #E2E8F0",
+            borderRadius: 8,
+            padding: "6px 14px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#475569",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
 }
 function todayBR() {
   const d = new Date();
@@ -292,23 +348,27 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     return () => document.removeEventListener("mousedown", onDoc);
   }, [showStatusMenu]);
 
-  if (!data) return null;
-
   // Um produto guarda seus itens num nivel so, entao faz papel de cliente e de
   // plano ao mesmo tempo.
   const ehProduto = areaId === PRODUTOS_AREA_ID;
-  const produto = ehProduto ? data.produtos?.find((p: Produto) => p.id === clienteId) : null;
+  const produto = ehProduto ? data?.produtos?.find((p: Produto) => p.id === clienteId) : null;
 
   const area = ehProduto
     ? { id: PRODUTOS_AREA_ID, name: MODULO_PRODUTOS }
-    : data.areas?.find((a: Area) => a.id === areaId);
+    : data?.areas?.find((a: Area) => a.id === areaId);
   const cliente = ehProduto ? produto : area?.clientes?.find((c: Cliente) => c.id === clienteId);
   const plano = ehProduto ? produto : cliente?.planos?.find((p: Plano) => p.id === planoId);
   const item = ehProduto
     ? produto?.items?.find((it: Item) => it.id === itemId)
     : plano?.items?.find((it: Item) => it.id === itemId);
 
-  if (!item || !plano || !cliente || !area) return null;
+  // O modal carrega a propria copia do estado, entao um card recem-criado em
+  // outra tela ainda pode nao ter chegado aqui. Devolver null fazia o clique
+  // parecer morto; melhor dizer que esta carregando e deixar o realtime
+  // completar. Se algo foi mesmo apagado, o botao de fechar continua ali.
+  if (!data || !item || !plano || !cliente || !area) {
+    return <ModalCarregando carregado={Boolean(data)} onClose={onClose} />;
+  }
 
   const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
   const kanbanStatus: KanbanStatus = item.kanbanStatus || "A Fazer";
@@ -1412,6 +1472,19 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   >
                     Negócio
                   </span>
+                  {movimentosDoNegocio(item) > 0 && (
+                    <button
+                      onClick={() => patchItem(limparTrajetoria())}
+                      title={
+                        `${movimentosDoNegocio(item)} movimento(s) de etapa gravados. ` +
+                        "Limpar tira este negócio da conta de conversão sem mudar a etapa atual — " +
+                        "útil para apagar arrasto de teste."
+                      }
+                      style={{ ...ghostBtn, color: "#64748B", marginRight: "auto" }}
+                    >
+                      Limpar trajetória ({movimentosDoNegocio(item)})
+                    </button>
+                  )}
                   {negocioPerdido ? (
                     <button
                       onClick={() => patchItem(reabrirNegocio(item))}
