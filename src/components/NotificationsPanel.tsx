@@ -1,8 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Bell, X, AtSign, MessageSquare, Check } from "lucide-react";
+import {
+  Bell,
+  X,
+  AtSign,
+  MessageSquare,
+  Check,
+  UserPlus,
+  ArrowRightLeft,
+  CalendarClock,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useNotifications, markAllRead, markRead, type Notification } from "@/lib/notifications";
+import {
+  useNotifications,
+  markAllRead,
+  markRead,
+  descreverNotificacao,
+  type Notification,
+} from "@/lib/notifications";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { MentionText } from "@/components/MentionTextarea";
 import type { Profile } from "@/lib/profiles";
@@ -271,8 +286,17 @@ function NotifRow({
   onClick: () => void;
   profiles: Profile[];
 }) {
-  const Icon = n.tipo === "mencao" ? AtSign : MessageSquare;
-  const color = n.tipo === "mencao" ? "#8B5CF6" : "#0DD3C5";
+  const { titulo, cor: color } = descreverNotificacao(n);
+  const Icon =
+    n.tipo === "mencao"
+      ? AtSign
+      : n.tipo === "atribuicao"
+        ? UserPlus
+        : n.tipo === "mudanca_status"
+          ? ArrowRightLeft
+          : n.tipo === "prazo"
+            ? CalendarClock
+            : MessageSquare;
   return (
     <div
       style={{
@@ -317,9 +341,7 @@ function NotifRow({
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: "#0F172A", fontWeight: 700, marginBottom: 2 }}>
-            {n.tipo === "mencao"
-              ? `${n.autor_nome || "Alguém"} mencionou você`
-              : `Nova nota em "${n.item_nome || n.plano_nome}"`}
+            {titulo}
           </div>
           <div style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>
             {n.cliente_nome} · {n.modulo} · {n.plano_nome}

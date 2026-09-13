@@ -153,3 +153,28 @@ export async function emitMudancaStatus(opts: {
   }));
   await supabase.from("notifications").insert(rows);
 }
+
+/**
+ * Como cada tipo de aviso deve se apresentar.
+ *
+ * Existem cinco tipos, mas as telas só distinguiam menção — todo o resto
+ * aparecia como "Nova nota", inclusive ser atribuído a uma tarefa, que não é
+ * nota nenhuma. Centralizar aqui evita que as duas telas divirjam de novo.
+ */
+export function descreverNotificacao(n: Notification): { titulo: string; cor: string } {
+  const quem = n.autor_nome || "Alguém";
+  const onde = n.item_nome || n.plano_nome || "um item";
+  switch (n.tipo) {
+    case "mencao":
+      return { titulo: `${quem} mencionou você`, cor: "#8B5CF6" };
+    case "atribuicao":
+      return { titulo: `${quem} atribuiu "${onde}" a você`, cor: "#0DD3C5" };
+    case "mudanca_status":
+      return { titulo: `Status de "${onde}" mudou`, cor: "#3B82F6" };
+    case "prazo":
+      return { titulo: `Prazo de "${onde}"`, cor: "#F97316" };
+    case "nota_responsavel":
+    default:
+      return { titulo: `Nova nota em "${onde}"`, cor: "#0DD3C5" };
+  }
+}

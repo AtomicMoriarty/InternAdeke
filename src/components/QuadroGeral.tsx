@@ -22,7 +22,7 @@ import {
   type KanbanStatus,
 } from "@/lib/flattenItems";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
-import { emitMudancaStatus } from "@/lib/notifications";
+import { emitMudancaStatus, emitAtribuicao } from "@/lib/notifications";
 import { aplicarEmLote, descreverAcao, type AcaoEmLote } from "@/lib/edicaoEmLote";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import type { DashboardState } from "@/lib/dashboardTypes";
@@ -163,6 +163,30 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
           }
         : acaoRecebida;
     update((prev: DashboardState) => aplicarEmLote(prev, alvos, acao).data);
+
+    // Atribuir em lote precisa avisar quem foi atribuido — sem isto a pessoa
+    // so descobriria abrindo a propria pagina. "remover" nao gera aviso: nao ha
+    // o que a pessoa fazer com essa informacao.
+    if (acao.tipo === "responsaveis" && acao.modo !== "remover") {
+      for (const card of alvos) {
+        emitAtribuicao({
+          newIds: acao.ids,
+          oldIds: acao.modo === "substituir" ? [] : card.responsaveis || [],
+          ctx: {
+            cliente_id: card.clienteId,
+            cliente_nome: card.clienteNome,
+            modulo: card.modulo,
+            plano_id: card.planoId,
+            plano_nome: card.planoNome,
+            item_id: card.itemId,
+            item_nome: card.itemNome,
+            autor_id: currentUser?.id || null,
+            autor_nome: currentProfile?.display_name || currentUser?.email || "sistema",
+            trecho: "foi atribuído(a) a este item",
+          },
+        });
+      }
+    }
 
     // Mudanca de status avisa os responsaveis, igual ao arrastar um card
     if (acao.tipo === "status") {

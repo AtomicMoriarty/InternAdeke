@@ -47,6 +47,7 @@ import {
   useNotifications,
   markRead,
   emitMudancaStatus,
+  descreverNotificacao,
   type Notification,
 } from "@/lib/notifications";
 import { useProfiles } from "@/lib/profiles";
@@ -969,7 +970,7 @@ function NotificationRow({ n, onRead }: { n: Notification; onRead: () => void })
           {n.item_nome || n.plano_nome}
         </span>
         <span style={{ display: "block", fontSize: 11, color: "#64748B", marginTop: 2 }}>
-          {n.trecho || n.tipo}
+          {descreverNotificacao(n).titulo}
         </span>
       </span>
       {!n.lida && <CheckCircle size={14} color="#0DD3C5" />}
