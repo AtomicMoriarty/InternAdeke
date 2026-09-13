@@ -15,6 +15,9 @@ import { parseBR } from "@/lib/relatorios";
 
 export const AREA_COMERCIAL = "comercial";
 
+/** Marca deixada por reunioes.ts nos cards que sao encaminhamento, nao negocio. */
+export const CAMPO_ORIGEM_REUNIAO = "origemReuniaoId";
+
 export function ehAreaComercial(areaId: string): boolean {
   return areaId === AREA_COMERCIAL;
 }
@@ -418,6 +421,10 @@ export function negociosDoFunil(data: DashboardState, agora: Date = new Date()):
   for (const cliente of area?.clientes || []) {
     for (const plano of (cliente as Cliente).planos || []) {
       for (const item of (plano as Plano).items || []) {
+        // Encaminhamento de reuniao e tarefa, nao negocio. Sem esta linha eles
+        // entrariam no funil como cards fantasma, igual aos que o template
+        // criava antes.
+        if (item[CAMPO_ORIGEM_REUNIAO]) continue;
         out.push({
           item,
           itemId: item.id,

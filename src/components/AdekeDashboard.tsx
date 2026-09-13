@@ -60,6 +60,7 @@ import {
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import FunilComercial from "@/components/FunilComercial";
+import ReunioesComerciais from "@/components/ReunioesComerciais";
 import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente } from "@/lib/comercial";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
@@ -1663,6 +1664,7 @@ function AreaView({ areaId, data, setData, nav }) {
           {[
             ["funil", "Funil de vendas"],
             ["clientes", "Empresas"],
+            ["reunioes", "Reuniões Comerciais"],
           ].map(([id, rotulo]) => (
             <button
               key={id}
@@ -1686,6 +1688,8 @@ function AreaView({ areaId, data, setData, nav }) {
       )}
 
       {ehComercial && vista === "funil" && <FunilComercial data={data} setData={setData} />}
+
+      {ehComercial && vista === "reunioes" && <ReunioesComerciais data={data} setData={setData} />}
 
       {(!ehComercial || vista === "clientes") && (
         <>
@@ -4212,118 +4216,6 @@ const PRESET_EMOJIS = [
   "🌐",
 ];
 
-function isCommercialProduct(prod) {
-  const name = normalizeRiskText(`${prod?.name || ""} ${prod?.descricao || ""}`);
-  return name.includes("comercial") || name.includes("vendas") || name.includes("proposta");
-}
-
-function profileIdsFromMentions(line = "", profiles = []) {
-  const usernames = [...String(line).matchAll(/@([a-zA-Z0-9._-]+)/g)].map((m) =>
-    normalizeRiskText(m[1]),
-  );
-  if (!usernames.length) return [];
-  return profiles
-    .filter((profile) => usernames.includes(normalizeRiskText(profile.username || "")))
-    .map((profile) => profile.id);
-}
-
-function todoLinesFromAta(text = "") {
-  const cleaned = String(text).replace(/\r/g, "\n");
-  const rawLines = cleaned.split("\n");
-  const todoIndex = rawLines.findIndex((line) =>
-    /^(to[\s-]?do|tarefas|tasks|encaminhamentos)\s*:?\s*$/i.test(normalizeRiskText(line.trim())),
-  );
-  if (todoIndex < 0) return [];
-  const lines = [];
-  for (const rawLine of rawLines.slice(todoIndex + 1)) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) continue;
-    const normalized = normalizeRiskText(trimmed);
-    const isBullet = /^[\s\-•*0-9.)]+/.test(rawLine);
-    const looksLikeHeading =
-      !isBullet &&
-      !trimmed.includes("@") &&
-      trimmed.length < 80 &&
-      /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9][^.!?]*$/.test(trimmed);
-    if (looksLikeHeading && lines.length) break;
-    if (normalized === "to-do" || normalized === "todo") continue;
-    lines.push(trimmed);
-  }
-  return lines;
-}
-
-function extractAtaTasks(text = "", title = "Ata comercial", profiles = []) {
-  const todoLines = todoLinesFromAta(text);
-  if (todoLines.length) {
-    const unique = [];
-    todoLines.forEach((line) => {
-      const responsaveis = profileIdsFromMentions(line, profiles);
-      const name = line
-        .replace(/^[\s\-•*0-9.)]+/, "")
-        .replace(/@([a-zA-Z0-9._-]+)/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (name.length < 6) return;
-      if (unique.some((task) => normalizeRiskText(task.name) === normalizeRiskText(name))) return;
-      unique.push({ name: name.slice(0, 180), responsaveis, original: line });
-    });
-    return unique.slice(0, 30);
-  }
-
-  const cleaned = String(text).replace(/\r/g, "\n");
-  const lines = cleaned
-    .split("\n")
-    .map((line) => line.replace(/^[\s\-•*0-9.)]+/, "").trim())
-    .filter(Boolean);
-  const actionWords = [
-    "acao",
-    "task",
-    "tarefa",
-    "encaminhamento",
-    "responsavel",
-    "prazo",
-    "deve",
-    "precisa",
-    "ficou definido",
-    "vamos",
-    "enviar",
-    "criar",
-    "validar",
-    "revisar",
-    "agendar",
-    "retornar",
-    "preparar",
-    "apresentar",
-    "cobrar",
-    "alinhar",
-  ];
-  const candidates = lines.filter((line) => {
-    const normalized = normalizeRiskText(line);
-    return actionWords.some((word) => normalized.includes(word));
-  });
-  const source = candidates.length ? candidates : lines.slice(0, 6);
-  const unique = [];
-  source.forEach((line) => {
-    const responsaveis = profileIdsFromMentions(line, profiles);
-    const name = line
-      .replace(/^(acao|task|tarefa|encaminhamento)\s*[:-]\s*/i, "")
-      .replace(/@([a-zA-Z0-9._-]+)/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (name.length < 8) return;
-    if (unique.some((task) => normalizeRiskText(task.name) === normalizeRiskText(name))) return;
-    unique.push({ name: name.slice(0, 180), responsaveis, original: line });
-  });
-  if (!unique.length && cleaned.trim()) {
-    unique.push({
-      name: `Revisar ata e definir proximos passos: ${title}`,
-      responsaveis: [],
-      original: title,
-    });
-  }
-  return unique.slice(0, 12);
-}
-
 function ProdutosView({ data, setData, nav }) {
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -4821,20 +4713,14 @@ function ProdutosView({ data, setData, nav }) {
 // ─── Produto Detail ────────────────────────────────────────────────────────────
 function ProdutoDetail({ prodId, data, setData, nav }) {
   const prod = data.produtos.find((p) => p.id === prodId);
-  const isComercial = isCommercialProduct(prod);
   const profiles = useProfiles();
   const me = useCurrentUser();
-  const [tab, setTab] = useState(isComercial ? "notas" : "roadmap");
+  const [tab, setTab] = useState("roadmap");
   const [newInfoCampo, setNewInfoCampo] = useState("");
   const [newInfoValor, setNewInfoValor] = useState("");
   const [newNotaTitulo, setNewNotaTitulo] = useState("");
   const [newNotaTexto, setNewNotaTexto] = useState("");
   const [newEtapa, setNewEtapa] = useState("");
-  const [expandedAtaId, setExpandedAtaId] = useState(null);
-
-  useEffect(() => {
-    if (isComercial && tab === "info") setTab("notas");
-  }, [isComercial, tab]);
 
   if (!prod) return null;
   const { total: t, done: d, pct } = prog(prod.items);
@@ -5001,18 +4887,16 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
     const cmd = interpretarTexto(newNotaTexto.trim(), profiles);
     const nota = {
       id: `nota${uid()}`,
-      titulo: newNotaTitulo.trim() || (isComercial ? "Ata sem título" : "Sem título"),
+      titulo: newNotaTitulo.trim() || "Sem título",
       texto: cmd.textoLimpo,
       data: new Date().toLocaleDateString("pt-BR"),
-      tipo: isComercial ? "ata" : "nota",
+      tipo: "nota",
       createdAt: new Date().toISOString(),
     };
     setData((dd) => ({
       ...dd,
       produtos: dd.produtos.map((p) =>
-        p.id !== prodId
-          ? p
-          : { ...p, notas: isComercial ? [nota, ...(p.notas || [])] : [...(p.notas || []), nota] },
+        p.id !== prodId ? p : { ...p, notas: [...(p.notas || []), nota] },
       ),
     }));
     setNewNotaTitulo("");
@@ -5041,58 +4925,12 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
             },
       ),
     }));
-  const gerarTasksDaAta = (nota) => {
-    const tasksFromAta = extractAtaTasks(nota.texto, nota.titulo, profiles);
-    if (!tasksFromAta.length) return;
-    setData((dd) => ({
-      ...dd,
-      produtos: dd.produtos.map((p) => {
-        if (p.id !== prodId) return p;
-        const existing = new Set(
-          (p.items || [])
-            .filter((item) => item.sourceAtaId === nota.id)
-            .map((item) => normalizeRiskText(item.name)),
-        );
-        const tasks = tasksFromAta
-          .filter((task) => !existing.has(normalizeRiskText(task.name)))
-          .map((task) => ({
-            id: `e${uid()}`,
-            name: task.name,
-            status: "A Fazer",
-            kanbanStatus: "A Fazer",
-            prazo: "",
-            obs: `Gerado a partir da ata "${nota.titulo}" (${nota.data}).\nLinha original: ${task.original}`,
-            responsaveis: task.responsaveis,
-            sourceAtaId: nota.id,
-          }));
-        return {
-          ...p,
-          items: [...(p.items || []), ...tasks],
-          notas: (p.notas || []).map((n) =>
-            n.id !== nota.id
-              ? n
-              : {
-                  ...n,
-                  tasksGeradas: [...(n.tasksGeradas || []), ...tasks.map((task) => task.id)],
-                  ultimaGeracaoTasks: new Date().toLocaleString("pt-BR"),
-                },
-          ),
-        };
-      }),
-    }));
-    setTab("roadmap");
-  };
 
-  const tabs = isComercial
-    ? [
-        { id: "notas", label: "Atas", count: (prod.notas || []).length },
-        { id: "roadmap", label: "Tasks", count: prod.items.length },
-      ]
-    : [
-        { id: "roadmap", label: "Roadmap", count: prod.items.length },
-        { id: "info", label: "Informações", count: (prod.informacoes || []).length },
-        { id: "notas", label: "Notas", count: (prod.notas || []).length },
-      ];
+  const tabs = [
+    { id: "roadmap", label: "Roadmap", count: prod.items.length },
+    { id: "info", label: "Informações", count: (prod.informacoes || []).length },
+    { id: "notas", label: "Notas", count: (prod.notas || []).length },
+  ];
 
   // Canal de Ética: count linked clients
   const canalEticaClients = prod.isCanalEtica
@@ -5362,7 +5200,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
               marginBottom: 10,
             }}
           >
-            {isComercial ? "Tasks geradas das atas" : "Roadmap & Etapas"}
+            Roadmap & Etapas
           </p>
           <div
             style={{
@@ -5459,9 +5297,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
             ))}
             {prod.items.length === 0 && (
               <div style={{ padding: 40, textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
-                {isComercial
-                  ? "Nenhuma task ainda. Salve uma ata e gere os encaminhamentos."
-                  : "Nenhuma etapa cadastrada. Adicione a primeira etapa acima."}
+                Nenhuma etapa cadastrada. Adicione a primeira etapa acima.
               </div>
             )}
           </div>
@@ -5469,7 +5305,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
       )}
 
       {/* ── Informações Tab ── */}
-      {!isComercial && tab === "info" && (
+      {tab === "info" && (
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
             <input
@@ -5609,26 +5445,22 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                 letterSpacing: 0.5,
               }}
             >
-              {isComercial ? "Nova Ata Comercial" : "Nova Nota"}
+              Nova Nota
             </p>
             <input
               value={newNotaTitulo}
               onChange={(e) => setNewNotaTitulo(e.target.value)}
-              placeholder={isComercial ? "Título da ata..." : "Título da nota..."}
+              placeholder="Título da nota..."
               style={{ ...inp, width: "100%", marginBottom: 8, fontSize: 13 }}
             />
             <MentionTextarea
               value={newNotaTexto}
               onChange={setNewNotaTexto}
-              placeholder={
-                isComercial
-                  ? "Cole a ata da reunião comercial aqui. Inclua encaminhamentos, responsáveis e prazos para gerar tasks."
-                  : "Escreva sua nota... @ menciona, !task vira tarefa"
-              }
-              rows={isComercial ? 12 : 4}
+              placeholder="Escreva sua nota... @ menciona, !task vira tarefa"
+              rows={4}
               style={{
-                minHeight: isComercial ? 260 : 110,
-                fontSize: isComercial ? 13 : 12,
+                minHeight: 110,
+                fontSize: 12,
                 lineHeight: 1.6,
               }}
             />
@@ -5649,7 +5481,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                 fontFamily: "inherit",
               }}
             >
-              <Plus size={14} /> {isComercial ? "Salvar Ata" : "Salvar Nota"}
+              <Plus size={14} /> Salvar Nota
             </button>
           </div>
 
@@ -5665,13 +5497,12 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
             >
               <StickyNote size={24} color="#E2E8F0" style={{ margin: "0 auto 10px" }} />
               <p style={{ color: "#94A3B8", fontSize: 13, fontWeight: 600 }}>
-                {isComercial ? "Nenhuma ata adicionada" : "Nenhuma nota adicionada"}
+                Nenhuma nota adicionada
               </p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {(prod.notas || []).map((nota) => {
-                const ataExpanded = expandedAtaId === nota.id;
                 return (
                   <div
                     key={nota.id}
@@ -5679,7 +5510,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                       background: "#FFFFFF",
                       border: `1px solid ${prod.color}20`,
                       borderRadius: 14,
-                      padding: ataExpanded ? 26 : 20,
+                      padding: 20,
                     }}
                   >
                     <div
@@ -5697,24 +5528,6 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                         <p style={{ color: "#64748B", fontSize: 11, marginTop: 2 }}>{nota.data}</p>
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        {isComercial && (
-                          <button
-                            onClick={() => setExpandedAtaId(ataExpanded ? null : nota.id)}
-                            style={{
-                              background: ataExpanded ? `${prod.color}18` : "#F8FAFC",
-                              border: `1px solid ${ataExpanded ? `${prod.color}45` : "#E2E8F0"}`,
-                              borderRadius: 8,
-                              color: ataExpanded ? prod.color : "#475569",
-                              padding: "6px 10px",
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                              fontSize: 11,
-                              fontWeight: 800,
-                            }}
-                          >
-                            {ataExpanded ? "Recolher" : "Abrir documento"}
-                          </button>
-                        )}
                         <button
                           onClick={() => removeNota(nota.id)}
                           style={{
@@ -5743,52 +5556,14 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                           origemId: nota.id,
                         });
                       }}
-                      rows={isComercial ? (ataExpanded ? 30 : 12) : 3}
+                      rows={3}
                       style={{
-                        minHeight: isComercial ? (ataExpanded ? 620 : 260) : 90,
-                        fontSize: isComercial ? 13 : 12,
+                        minHeight: 90,
+                        fontSize: 12,
                         lineHeight: 1.65,
-                        padding: isComercial ? "14px 16px" : "8px 12px",
+                        padding: "8px 12px",
                       }}
                     />
-                    {isComercial && (
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 10,
-                          marginTop: 12,
-                          paddingTop: 12,
-                          borderTop: "1px solid #F1F5F9",
-                        }}
-                      >
-                        <span style={{ color: "#64748B", fontSize: 11, fontWeight: 600 }}>
-                          {(nota.tasksGeradas || []).length > 0
-                            ? `${nota.tasksGeradas.length} task(s) geradas desta ata`
-                            : "Nenhuma task gerada desta ata"}
-                        </span>
-                        <button
-                          onClick={() => gerarTasksDaAta(nota)}
-                          style={{
-                            background: prod.color,
-                            border: "none",
-                            borderRadius: 8,
-                            color: "#fff",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontFamily: "inherit",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            padding: "8px 12px",
-                          }}
-                        >
-                          <Plus size={13} /> Gerar tasks da ata
-                        </button>
-                      </div>
-                    )}
                   </div>
                 );
               })}
