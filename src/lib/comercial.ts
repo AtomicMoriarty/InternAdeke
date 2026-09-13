@@ -386,10 +386,23 @@ export function criarNegocio(data: DashboardState, novo: NovoNegocio): Dashboard
   };
 }
 
-/** As empresas do Comercial, para o seletor de novo negócio. */
+/**
+ * Empresa sintética que guarda tarefas de reunião interna. Não é cliente.
+ * Declarada aqui, e não em reunioes.ts, para não criar dependência circular.
+ */
+export const CLIENTE_INTERNO_ID = "__reunioes_internas";
+
+/**
+ * As empresas do Comercial, para os seletores.
+ *
+ * Tira a empresa das reuniões internas: ela existe só para as tarefas terem
+ * casa, e oferecê-la como destino de negócio ou de reunião com cliente
+ * confundiria mais do que ajudaria.
+ */
 export function empresasDoComercial(data: DashboardState): { id: string; nome: string }[] {
   const area = (data?.areas || []).find((a: Area) => a.id === AREA_COMERCIAL);
   return ((area?.clientes || []) as Cliente[])
+    .filter((c) => c.id !== CLIENTE_INTERNO_ID)
     .map((c) => ({ id: c.id, nome: c.name || "" }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
 }

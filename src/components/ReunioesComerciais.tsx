@@ -97,6 +97,7 @@ export default function ReunioesComerciais({ data, setData }: Props) {
     if (!r || !linhas.length) return;
 
     const plano = planejarValidadas(
+      data,
       r,
       linhas.map((l) => ({
         texto: l.texto,

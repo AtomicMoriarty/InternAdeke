@@ -43,6 +43,7 @@ import type {
   DashboardState,
 } from "@/lib/dashboardTypes";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
+import { ehTarefaDeReuniao } from "@/lib/reunioes";
 import {
   ehAreaComercial,
   ETAPAS,
@@ -379,7 +380,10 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
   const acompanhando = temAcompanhamento(item);
   // Campos que so existem no Comercial: um item la e um negocio.
-  const ehNegocio = ehAreaComercial(areaId);
+  // Um card da area comercial e um negocio do funil — menos quando nasceu de
+  // uma reuniao. Encaminhamento e tarefa: etapa, valor e temperatura ali seriam
+  // controles mortos, porque o funil nem mostra esses cards.
+  const ehNegocio = ehAreaComercial(areaId) && !ehTarefaDeReuniao(item);
   const verValores = podeVerValores(currentProfile);
   const etapaAtual = etapaDoItem(item);
   const negocioPerdido = ehPerdido(item);

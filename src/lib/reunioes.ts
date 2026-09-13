@@ -12,7 +12,7 @@
 
 import type { DashboardState, Area, Cliente, Plano, Item } from "@/lib/dashboardTypes";
 import type { Profile } from "@/lib/profiles";
-import { AREA_COMERCIAL, CAMPO_ORIGEM_REUNIAO } from "@/lib/comercial";
+import { AREA_COMERCIAL, CAMPO_ORIGEM_REUNIAO, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 
 export const TIPOS_REUNIAO = [
   { id: "cliente", nome: "Com cliente", cor: "#0DD3C5" },
@@ -52,7 +52,7 @@ export type Reuniao = {
 export const PLANO_TAREFAS = "Tarefas de reunião";
 
 /** Empresa sintética que guarda as tarefas de reunião interna. */
-export const CLIENTE_INTERNO = "__reunioes_internas";
+export const CLIENTE_INTERNO = CLIENTE_INTERNO_ID;
 export const NOME_CLIENTE_INTERNO = "Reuniões internas";
 
 function idCurto(prefixo: string) {
@@ -261,6 +261,19 @@ export function ehTarefaDeReuniao(item: Item): boolean {
   return Boolean(item?.[CAMPO_ORIGEM]);
 }
 
+/** Nomes dos cards que esta reunião já gerou, para não repetir. */
+function nomesJaGerados(data: DashboardState, reuniaoId: string): Set<string> {
+  const out = new Set<string>();
+  for (const c of clientesDoComercial(data)) {
+    for (const pl of (c.planos || []) as Plano[]) {
+      for (const it of (pl.items || []) as Item[]) {
+        if (it[CAMPO_ORIGEM] === reuniaoId) out.add(semAcento(String(it.name || "")));
+      }
+    }
+  }
+  return out;
+}
+
 export type PlanoDeGeracao = {
   /** Os cards prontos, com id definitivo. */
   cards: Item[];
@@ -292,14 +305,7 @@ export function planejarTarefas(
   const extraidas = tarefasDoTexto(reuniao.encaminhamentos || "", profiles);
   if (!extraidas.length) return { cards: [], repetidas: 0, alvoId };
 
-  const jaExistem = new Set<string>();
-  for (const c of clientesDoComercial(data)) {
-    for (const pl of (c.planos || []) as Plano[]) {
-      for (const it of (pl.items || []) as Item[]) {
-        if (it[CAMPO_ORIGEM] === reuniao.id) jaExistem.add(semAcento(String(it.name || "")));
-      }
-    }
-  }
+  const jaExistem = nomesJaGerados(data, reuniao.id);
 
   const novas = extraidas.filter((t) => !jaExistem.has(semAcento(t.nome)));
   return {
@@ -330,6 +336,7 @@ export type TarefaValidada = {
 
 /** Monta os cards do relatório validado, sem tocar no estado. */
 export function planejarValidadas(
+  data: DashboardState,
   reuniao: Reuniao,
   tarefas: TarefaValidada[],
   agora: Date = new Date(),
@@ -338,35 +345,38 @@ export function planejarValidadas(
     reuniao.tipo === "interna" || !reuniao.clienteId ? CLIENTE_INTERNO : reuniao.clienteId;
   const iso = agora.toISOString();
 
-  const cards: Item[] = tarefas
-    .filter((t) => t.texto.trim())
-    .map((t) => {
-      const origem =
-        t.fraseOriginal && t.fraseOriginal !== t.texto
-          ? `\n\nNa transcrição: "${t.fraseOriginal}"`
-          : "";
-      const quem = t.ditoPor ? ` (dito por ${t.ditoPor})` : "";
-      return {
-        id: idCurto("it"),
-        name: t.texto.trim().slice(0, 180),
-        tipo: "Outro",
-        responsavel: "",
-        responsaveis: t.responsaveis || [],
-        status: "Não iniciado",
-        kanbanStatus: "A Fazer",
-        obs: "",
-        descricao: `Encaminhamento da reunião "${reuniao.titulo}" (${reuniao.data})${quem}.${origem}`,
-        prazo: t.prazo || "",
-        dataInicio: t.dataInicio || reuniao.data || dataBR(agora),
-        criadoEm: iso,
-        statusChangedAt: iso,
-        checklist: [],
-        etiquetas: [],
-        [CAMPO_ORIGEM]: reuniao.id,
-      } as Item;
-    });
+  // Criar duas vezes a mesma leitura nao duplica card, igual ao outro caminho.
+  const jaExistem = nomesJaGerados(data, reuniao.id);
+  const pedidas = tarefas.filter((t) => t.texto.trim());
+  const novas = pedidas.filter((t) => !jaExistem.has(semAcento(t.texto)));
 
-  return { cards, repetidas: 0, alvoId };
+  const cards: Item[] = novas.map((t) => {
+    const origem =
+      t.fraseOriginal && t.fraseOriginal !== t.texto
+        ? `\n\nNa transcrição: "${t.fraseOriginal}"`
+        : "";
+    const quem = t.ditoPor ? ` (dito por ${t.ditoPor})` : "";
+    return {
+      id: idCurto("it"),
+      name: t.texto.trim().slice(0, 180),
+      tipo: "Outro",
+      responsavel: "",
+      responsaveis: t.responsaveis || [],
+      status: "Não iniciado",
+      kanbanStatus: "A Fazer",
+      obs: "",
+      descricao: `Encaminhamento da reunião "${reuniao.titulo}" (${reuniao.data})${quem}.${origem}`,
+      prazo: t.prazo || "",
+      dataInicio: t.dataInicio || reuniao.data || dataBR(agora),
+      criadoEm: iso,
+      statusChangedAt: iso,
+      checklist: [],
+      etiquetas: [],
+      [CAMPO_ORIGEM]: reuniao.id,
+    } as Item;
+  });
+
+  return { cards, repetidas: pedidas.length - novas.length, alvoId };
 }
 
 /** Grava os cards planejados e anota os ids na reunião. */
