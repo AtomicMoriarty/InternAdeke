@@ -220,7 +220,7 @@ export function lerValor(texto: string): number {
 }
 
 export function formatarValor(n: number): string {
-  if (!n) return "—";
+  if (!n) return "-";
   return n.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
@@ -230,7 +230,7 @@ export function formatarValor(n: number): string {
 
 /** Versão curta para caber no topo da coluna: R$ 182 mil. */
 export function formatarValorCurto(n: number): string {
-  if (!n) return "—";
+  if (!n) return "-";
   if (n >= 1000000)
     return `R$ ${(n / 1000000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi`;
   if (n >= 1000) return `R$ ${Math.round(n / 1000).toLocaleString("pt-BR")} mil`;

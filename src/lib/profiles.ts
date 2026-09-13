@@ -26,7 +26,7 @@ function normalizeProfile(profile: Partial<Profile>): Profile {
   return {
     id: profile.id || "",
     email: profile.email || "",
-    display_name: profile.display_name || profile.username || profile.email || "Usuario",
+    display_name: profile.display_name || profile.username || profile.email || "Usuário",
     username: profile.username || "usuario",
     avatar_color: profile.avatar_color || colorFor(profile.id || profile.email || "usuario"),
     role: profile.role || "member",

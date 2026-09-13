@@ -148,7 +148,7 @@ export function tarefaDeTexto(
     kanbanStatus: "A Fazer",
     obs: "",
     // O texto integral fica na descrição: o nome é só o rótulo.
-    descricao: `${interpretado.textoLimpo}\n\n— ${origem.descricaoOrigem}`,
+    descricao: `${interpretado.textoLimpo}\n\n- ${origem.descricaoOrigem}`,
     prazo: "",
     dataInicio: dataBR(agora),
     criadoEm: iso,

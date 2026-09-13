@@ -336,7 +336,7 @@ export default function Gantt() {
         </div>
       )}
 
-      {/* Pendentes de data — preenchimento no lugar */}
+      {/* Pendentes de data - preenchimento no lugar */}
       {semDatas.length > 0 && (
         <div
           style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 14, padding: 18 }}

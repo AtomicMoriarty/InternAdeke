@@ -67,7 +67,7 @@ export default function Relatorios() {
     };
   }, [itens, parados, agora]);
 
-  const nome = (uid) => profiles.find((p) => p.id === uid)?.display_name || "—";
+  const nome = (uid) => profiles.find((p) => p.id === uid)?.display_name || "-";
 
   function exportarCarga() {
     baixarCSV(
@@ -333,7 +333,7 @@ export default function Relatorios() {
                           >
                             {c.parados7}
                           </td>
-                          <td style={{ ...td, color: "#64748B" }}>{c.mediaDiasEmAberto ?? "—"}</td>
+                          <td style={{ ...td, color: "#64748B" }}>{c.mediaDiasEmAberto ?? "-"}</td>
                         </tr>
                       );
                     })}
@@ -347,7 +347,7 @@ export default function Relatorios() {
               {tempos.length === 0 ? (
                 <Nota>
                   Ainda não há histórico suficiente. A contagem começa na primeira vez que um card
-                  muda de coluna — dados anteriores não existem.
+                  muda de coluna - dados anteriores não existem.
                 </Nota>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -507,7 +507,7 @@ export default function Relatorios() {
                           <strong>{e.item.itemNome}</strong>
                           <span style={{ color: "#64748B" }}>
                             {" "}
-                            —{" "}
+                            -{" "}
                             {e.descricao.length > 90 ? e.descricao.slice(0, 90) + "…" : e.descricao}
                           </span>
                         </div>

@@ -174,7 +174,7 @@ function mencionados(linha: string, profiles: Profile[]): string[] {
 
 function limparNome(linha: string) {
   return linha
-    .replace(/^[\s\-•*–—]+/, "")
+    .replace(/^[\s\-•*\u2013\u2014]+/, "")
     .replace(/^\d+[.)]\s*/, "")
     .replace(/^(acao|task|tarefa|encaminhamento)\s*[:-]\s*/i, "")
     .replace(/@([a-zA-Z0-9._-]+)/g, "")
@@ -244,7 +244,7 @@ function montarCard(t: TarefaExtraida, reuniao: Reuniao, agora: Date): Item {
     status: "Não iniciado",
     kanbanStatus: "A Fazer",
     obs: "",
-    descricao: `${t.original}\n\n— encaminhamento da reunião "${reuniao.titulo}" (${reuniao.data})`,
+    descricao: `${t.original}\n\n- encaminhamento da reunião "${reuniao.titulo}" (${reuniao.data})`,
     prazo: "",
     dataInicio: dataBR(agora),
     criadoEm: iso,

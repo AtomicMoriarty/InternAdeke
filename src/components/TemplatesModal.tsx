@@ -255,7 +255,7 @@ export default function TemplatesModal({ templates, areaIdPadrao, onSalvar, onFe
                             e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
                           )
                         }
-                        placeholder="—"
+                        placeholder="-"
                         style={{ ...campo, width: 72 }}
                       />
                       <span style={{ fontSize: 11, color: "#94A3B8" }}>dias após criar</span>

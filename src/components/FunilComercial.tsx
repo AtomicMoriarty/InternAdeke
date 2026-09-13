@@ -316,24 +316,24 @@ export default function FunilComercial({ data, setData }: Props) {
         <Numero
           rotulo="Em aberto"
           valor={String(resumo.emAberto)}
-          detalhe={verValores ? formatarValorCurto(resumo.valorEmAberto) : "—"}
+          detalhe={verValores ? formatarValorCurto(resumo.valorEmAberto) : "-"}
           cor="#3B82F6"
         />
         <Numero
           rotulo="Ganhos"
           valor={String(resumo.ganhos)}
-          detalhe={verValores ? formatarValorCurto(resumo.valorGanho) : "—"}
+          detalhe={verValores ? formatarValorCurto(resumo.valorGanho) : "-"}
           cor="#10B981"
         />
         <Numero
           rotulo="Perdidos"
           valor={String(resumo.perdidos)}
-          detalhe={verValores ? formatarValorCurto(resumo.valorPerdido) : "—"}
+          detalhe={verValores ? formatarValorCurto(resumo.valorPerdido) : "-"}
           cor="#EF4444"
         />
         <Numero
           rotulo="Taxa de ganho"
-          valor={resumo.taxaGanho === null ? "—" : `${resumo.taxaGanho}%`}
+          valor={resumo.taxaGanho === null ? "-" : `${resumo.taxaGanho}%`}
           detalhe={
             resumo.taxaGanho === null
               ? "nada decidido ainda"
@@ -344,7 +344,7 @@ export default function FunilComercial({ data, setData }: Props) {
         {verValores && (
           <Numero
             rotulo="Ticket médio"
-            valor={resumo.ticketMedio ? formatarValorCurto(resumo.ticketMedio) : "—"}
+            valor={resumo.ticketMedio ? formatarValorCurto(resumo.ticketMedio) : "-"}
             detalhe="por negócio ganho"
             cor="#F59E0B"
           />
@@ -375,7 +375,7 @@ export default function FunilComercial({ data, setData }: Props) {
             <strong>{parados.length}</strong> negócio{parados.length !== 1 ? "s" : ""} sem movimento
             há mais de {DIAS_PARADO_ALERTA} dias
             {parados[0]
-              ? ` — o mais antigo é ${parados[0].clienteNome} (${parados[0].diasParado} dias)`
+              ? ` - o mais antigo é ${parados[0].clienteNome} (${parados[0].diasParado} dias)`
               : ""}
           </span>
         </div>
@@ -397,7 +397,7 @@ export default function FunilComercial({ data, setData }: Props) {
           <CalendarClock size={15} color="#0369A1" />
           <span style={{ fontSize: 12, color: "#075985" }}>
             <strong>{semProximoPasso.length}</strong> negócio
-            {semProximoPasso.length !== 1 ? "s" : ""} em aberto sem próximo passo marcado — abra o
+            {semProximoPasso.length !== 1 ? "s" : ""} em aberto sem próximo passo marcado - abra o
             card e registre um follow-up com data para não deixar cair.
           </span>
         </div>
@@ -504,7 +504,7 @@ export default function FunilComercial({ data, setData }: Props) {
           }}
         >
           <strong style={{ color: "#0F172A" }}>O funil está vazio.</strong> Cada negócio é um item
-          dentro de um cliente do Comercial — crie o cliente e adicione a proposta como item. Etapa,
+          dentro de um cliente do Comercial - crie o cliente e adicione a proposta como item. Etapa,
           valor e temperatura ficam no card, na aba Comercial.
         </div>
       )}
@@ -623,7 +623,7 @@ export default function FunilComercial({ data, setData }: Props) {
                   <XCircle size={13} color="#EF4444" />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>
-                      {n.clienteNome} — {n.nome}
+                      {n.clienteNome} - {n.nome}
                     </div>
                     <div style={{ fontSize: 11, color: "#64748B" }}>
                       {String(n.item.motivoPerda || "sem motivo registrado")}
@@ -684,7 +684,7 @@ function CardNegocio({
       draggable
       role="button"
       tabIndex={0}
-      aria-label={`Abrir negócio: ${negocio.nome} — ${negocio.clienteNome}`}
+      aria-label={`Abrir negócio: ${negocio.nome} - ${negocio.clienteNome}`}
       onDragStart={() => {
         arrastou.current = true;
         onDragStart();

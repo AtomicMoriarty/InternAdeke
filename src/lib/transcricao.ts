@@ -36,7 +36,7 @@ const ROTULOS: RegExp[] = [
   // 00:12:34 Nome: texto
   /^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s+([^:]{2,40}?)\s*:\s*(.*)$/,
   // Nome - 00:12: texto
-  /^\s*([^-:]{2,40}?)\s*[-–]\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s*:?\s*(.*)$/,
+  /^\s*([^-:]{2,40}?)\s*[-\u2013]\s*(?:\d{1,2}:)?\d{1,2}:\d{2}\s*:?\s*(.*)$/,
   // Nome: texto   (o mais comum; por último para não roubar dos outros)
   /^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'\s]{1,39}?)\s*:\s+(.*)$/,
 ];
@@ -348,20 +348,20 @@ export function lerTranscricao(texto: string, profiles: Profile[] = []): Leitura
   } else {
     if (semFalante === falas.length) {
       observacoes.push(
-        "Não achei marcação de quem falou. Sem isso não dá para saber de quem é cada tarefa — " +
+        "Não achei marcação de quem falou. Sem isso não dá para saber de quem é cada tarefa - " +
           "as sugestões vêm sem responsável.",
       );
     }
     if (!compromissos.length) {
       observacoes.push(
         'Nenhum compromisso reconhecido. Procuro frases como "eu fico de", "vou mandar", ' +
-          '"você consegue" — se a reunião não teve isso dito em voz alta, escreva os ' +
+          '"você consegue" - se a reunião não teve isso dito em voz alta, escreva os ' +
           "encaminhamentos à mão.",
       );
     }
     if (!decisoes.length) {
       observacoes.push(
-        "Nenhuma decisão reconhecida. O resumo do que foi conversado continua sendo seu — " +
+        "Nenhuma decisão reconhecida. O resumo do que foi conversado continua sendo seu - " +
           "isto aqui só acha frases, não escreve texto.",
       );
     }

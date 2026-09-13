@@ -473,7 +473,7 @@ function Formulario({
             style={{ ...campo, width: 130 }}
           />
         </Campo>
-        {/* Interna também pode ser sobre uma empresa — a reunião semanal em que
+        {/* Interna também pode ser sobre uma empresa - a reunião semanal em que
             se fala do cliente X. Aí as tarefas vão para o quadro dele; sem
             empresa, ficam com o time. */}
         <Campo
@@ -486,7 +486,7 @@ function Formulario({
             style={{ ...campo, width: 230 }}
           >
             <option value="">
-              {reuniao.tipo === "interna" ? "Nenhuma — assunto do time" : "Selecione…"}
+              {reuniao.tipo === "interna" ? "Nenhuma - assunto do time" : "Selecione…"}
             </option>
             {empresas.map((emp) => (
               <option key={emp.id} value={emp.id}>
@@ -556,7 +556,7 @@ function Formulario({
       />
 
       <div style={{ height: 10 }} />
-      <Rotulo>Encaminhamentos — um por linha, viram tarefa</Rotulo>
+      <Rotulo>Encaminhamentos - um por linha, viram tarefa</Rotulo>
       <MentionTextarea
         value={reuniao.encaminhamentos || ""}
         onChange={(v: string) => set({ encaminhamentos: v })}
@@ -734,7 +734,7 @@ function BlocoTranscricao({
                   </Rotulo>
                   <p style={{ fontSize: 10, color: "#94A3B8", marginBottom: 8, lineHeight: 1.5 }}>
                     O responsável é um palpite: eu atribuo a quem falou a frase. Se quem se
-                    comprometeu foi outra pessoa, troque aqui — depois de criado, o card é normal e
+                    comprometeu foi outra pessoa, troque aqui - depois de criado, o card é normal e
                     aceita comentário, follow-up e próximo passo.
                   </p>
 

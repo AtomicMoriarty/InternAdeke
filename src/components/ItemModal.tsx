@@ -1061,7 +1061,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               </div>
 
               {/* A data de início já era gravada na criação e lida pela linha do
-                  tempo e pelos relatórios, mas não aparecia no card — só dava
+                  tempo e pelos relatórios, mas não aparecia no card - só dava
                   para corrigir pelo Gantt. Um card sem início vira barra
                   estimada lá, então é aqui que se acerta. */}
               <div style={{ minWidth: 150 }}>
@@ -1074,7 +1074,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 />
                 {!item.dataInicio && (
                   <div style={{ marginTop: 4, fontSize: 10, color: "#94A3B8" }}>
-                    sem início — a linha do tempo estima
+                    sem início - a linha do tempo estima
                   </div>
                 )}
               </div>
@@ -1353,7 +1353,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             </div>
 
             {/* Trajetória: por quais etapas o card passou e quanto tempo em
-                cada uma. Um status pode repetir — é a ida e volta que revela
+                cada uma. Um status pode repetir - é a ida e volta que revela
                 onde o processo trava. */}
             {trajetoria.length > 0 && (
               <div style={{ marginBottom: 22 }}>
@@ -1481,7 +1481,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                       onClick={() => patchItem(limparTrajetoria())}
                       title={
                         `${movimentosDoNegocio(item)} movimento(s) de etapa gravados. ` +
-                        "Limpar tira este negócio da conta de conversão sem mudar a etapa atual — " +
+                        "Limpar tira este negócio da conta de conversão sem mudar a etapa atual - " +
                         "útil para apagar arrasto de teste."
                       }
                       style={{ ...ghostBtn, color: "#64748B", marginRight: "auto" }}
@@ -1936,7 +1936,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             )}
           </div>
 
-          {/* ── Right column — atividade ── */}
+          {/* ── Right column - atividade ── */}
           <div
             style={{
               width: 284,
@@ -2296,7 +2296,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                           <CalendarClock size={11} />
                           <span>
                             {String(c.proximoPasso)}
-                            {c.proximoPassoEm ? ` — ${String(c.proximoPassoEm)}` : ""}
+                            {c.proximoPassoEm ? ` - ${String(c.proximoPassoEm)}` : ""}
                           </span>
                           {temPassoAberto(c) && (
                             <button

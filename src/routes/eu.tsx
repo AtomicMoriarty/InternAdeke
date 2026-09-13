@@ -346,7 +346,7 @@ function EuPage() {
             <EmptyText>Nenhuma tarefa atribuída a você por enquanto.</EmptyText>
           )}
           {loaded && myTasks.length > 0 && emAberto === 0 && (
-            <EmptyText>Tudo em dia — nada em aberto atribuído a você.</EmptyText>
+            <EmptyText>Tudo em dia - nada em aberto atribuído a você.</EmptyText>
           )}
 
           {/* Contadores: o que exige atenção hoje, antes da lista */}

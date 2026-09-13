@@ -62,7 +62,7 @@ export const SITUACOES: SituacaoDef[] = [
   {
     id: "gancho",
     nome: "Tema que conversa com o nosso",
-    descricao: "Saiu algo — norma, decisão, notícia — que afeta o cliente.",
+    descricao: "Saiu algo - norma, decisão, notícia - que afeta o cliente.",
   },
   {
     id: "retomada",
@@ -404,7 +404,7 @@ export function gerarFollowups(caso: Caso): Resultado {
 
   if (!caso.contato.trim()) observacoes.push("Sem o nome do contato, a mensagem começa genérica.");
   if (!caso.assunto.trim())
-    observacoes.push("Sem o assunto, a mensagem fica vaga — é o campo que mais muda o resultado.");
+    observacoes.push("Sem o assunto, a mensagem fica vaga - é o campo que mais muda o resultado.");
   if (caso.diasSemResposta >= 30 && caso.situacao !== "encerramento")
     observacoes.push(
       "Mais de 30 dias em silêncio: considere a situação Encerramento. É a mensagem que mais recebe resposta.",
@@ -464,20 +464,20 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
       return [
         monta(
           "Curta e objetiva",
-          `Confirmação — reunião${quando}`,
+          `Confirmação - reunião${quando}`,
           `${s}, tudo bem?\n\nPassando para confirmar nossa reunião${quando}. Está de pé pelo seu lado?`,
           1,
         ),
         monta(
           "Com pauta, para a reunião render",
-          `Reunião${quando} — pauta`,
+          `Reunião${quando} - pauta`,
           `${s}, tudo bem?\n\nConfirmando nossa reunião${quando}.\n\nPara aproveitarmos o tempo, pensei em tratar ${assunto}. Se houver outro ponto que você queira incluir, é só me dizer que eu preparo.`,
           2,
         ),
         monta(
           "Facilitando remarcar",
           `Reunião${quando}`,
-          `${s}, tudo bem?\n\nNossa reunião está marcada${quando}. Se a agenda apertou, me avise sem cerimônia que eu remarco — melhor conversar com calma do que correndo.`,
+          `${s}, tudo bem?\n\nNossa reunião está marcada${quando}. Se a agenda apertou, me avise sem cerimônia que eu remarco - melhor conversar com calma do que correndo.`,
           3,
         ),
       ];
@@ -490,19 +490,19 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         monta(
           "No momento, sem cobrança",
           "Nossa reunião",
-          `${s}, tudo bem?\n\nEstou na sala aguardando. Se precisar de alguns minutos, sem problema — fico por aqui.`,
+          `${s}, tudo bem?\n\nEstou na sala aguardando. Se precisar de alguns minutos, sem problema - fico por aqui.`,
           1,
         ),
         monta(
           "Logo depois, já remarcando",
-          `Reencontro — reunião${quando}`,
+          `Reencontro - reunião${quando}`,
           `${s}, tudo bem?\n\nNão conseguimos nos encontrar${quando}. Imagino que o dia tenha corrido.\n\nMe diga dois horários que funcionem para você nos próximos dias que eu me ajusto.`,
           2,
         ),
         monta(
           "Se já é a segunda vez",
           "Melhor momento para conversarmos",
-          `${s}, tudo bem?\n\nTentamos nos encontrar mais de uma vez e não deu certo — o que costuma significar que o momento não está fácil aí.\n\nPrefere que eu remarque para daqui a algumas semanas, ou faz mais sentido resolvermos ${nu} por escrito mesmo?`,
+          `${s}, tudo bem?\n\nTentamos nos encontrar mais de uma vez e não deu certo - o que costuma significar que o momento não está fácil aí.\n\nPrefere que eu remarque para daqui a algumas semanas, ou faz mais sentido resolvermos ${nu} por escrito mesmo?`,
           3,
         ),
       ];
@@ -516,13 +516,13 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         return [
           monta(
             "Retomada simples",
-            `Retomando — ${assuntoBreve || "nossa conversa"}`,
+            `Retomando - ${assuntoBreve || "nossa conversa"}`,
             `${s}, tudo bem?\n\nEscrevi há ${dias === 1 ? "um dia" : `${dias} dias`} ${assunto} e imagino que a mensagem possa ter se perdido.\n\nFaz sentido conversarmos?`,
             1,
           ),
           monta(
             "Trazendo o motivo técnico",
-            `${assuntoBreve || "Assunto"} — ${area?.nome || "Porto e Pacca"}`,
+            `${assuntoBreve || "Assunto"} - ${area?.nome || "Porto e Pacca"}`,
             `${s}, tudo bem?\n\nVoltando ${assunto}.${trechoPrazo(caso)}\n\nTrabalhamos com ${gancho} e posso oferecer ${ofertaDaArea(caso, 0)}. Sem compromisso: se não fizer sentido depois disso, você fica com o diagnóstico de qualquer forma.\n\nTem 30 minutos esta semana?`,
             2,
           ),
@@ -537,8 +537,8 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
       return [
         monta(
           "Direta, sem rodeio",
-          `${assuntoBreve || "Nossa conversa"} — segue no radar?`,
-          `${s}, tudo bem?\n\nEscrevi algumas vezes ${assunto} e não tive retorno, o que normalmente quer dizer uma de três coisas: não é prioridade agora, não sou eu quem deveria falar com você, ou o momento passou.\n\nQualquer uma delas está tudo bem — só me diga qual é para eu saber como proceder.`,
+          `${assuntoBreve || "Nossa conversa"} - segue no radar?`,
+          `${s}, tudo bem?\n\nEscrevi algumas vezes ${assunto} e não tive retorno, o que normalmente quer dizer uma de três coisas: não é prioridade agora, não sou eu quem deveria falar com você, ou o momento passou.\n\nQualquer uma delas está tudo bem - só me diga qual é para eu saber como proceder.`,
           1,
         ),
         monta(
@@ -549,7 +549,7 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         ),
         monta(
           "Última com valor na mesa",
-          `${assuntoBreve || "Assunto"} — última mensagem`,
+          `${assuntoBreve || "Assunto"} - última mensagem`,
           `${s}, tudo bem?\n\nÚltima vez que escrevo ${assunto}.${trechoPrazo(caso)}\n\nSe quiser, deixo ${ofertaDaArea(caso, 1)} agendado e você decide depois com o material em mãos. Se preferir que eu encerre, é só dizer.`,
           3,
         ),
@@ -562,18 +562,18 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         monta(
           "Verificando se chegou",
           "Nossa proposta",
-          `${s}, tudo bem?\n\nEnviei a proposta ${assunto} há ${caso.diasSemResposta} dias e queria confirmar se chegou até você.\n\nSe algum ponto do escopo ou dos valores precisar de ajuste, me diga qual — é mais rápido acertar do que deixar parado.`,
+          `${s}, tudo bem?\n\nEnviei a proposta ${assunto} há ${caso.diasSemResposta} dias e queria confirmar se chegou até você.\n\nSe algum ponto do escopo ou dos valores precisar de ajuste, me diga qual - é mais rápido acertar do que deixar parado.`,
           1,
         ),
         monta(
           "Antecipando a objeção",
-          "Proposta — algum ponto travando?",
+          "Proposta - algum ponto travando?",
           `${s}, tudo bem?\n\nSobre a proposta que enviei: quando ela fica parada, costuma ser por escopo maior do que o necessário, por valor fora do previsto para o momento, ou porque falta alguém interno aprovar.\n\nSe for qualquer um dos três, dá para resolver. Me diga qual é e eu volto com uma alternativa.`,
           2,
         ),
         monta(
           "Oferecendo um recorte menor",
-          "Proposta — versão reduzida",
+          "Proposta - versão reduzida",
           `${s}, tudo bem?\n\nA proposta ${assunto} segue de pé, mas talvez o escopo inteiro não seja o começo certo.\n\nPosso montar um recorte menor, com o que é mais urgente, e vocês avaliam o resto depois. Quer que eu prepare assim?`,
           3,
         ),
@@ -591,13 +591,13 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         ),
         monta(
           "Aviso com leitura do impacto",
-          `${assuntoBreve || "Novidade"} — o que muda para vocês`,
+          `${assuntoBreve || "Novidade"} - o que muda para vocês`,
           `${s}, tudo bem?\n\nSaiu ${oQue}, e olhando para o cenário${comEmpresa(caso)} isso tende a exigir ajuste de rotina, não só ciência do assunto.${trechoPrazo(caso)}\n\nPosso preparar ${ofertaDaArea(caso, 0)} e apresentar em 30 minutos, sem compromisso. Faz sentido?`,
           2,
         ),
         monta(
           "Com prazo na frente",
-          `${assuntoBreve || "Assunto"} — prazo${caso.prazo.trim() ? ` ${caso.prazo.trim()}` : ""}`,
+          `${assuntoBreve || "Assunto"} - prazo${caso.prazo.trim() ? ` ${caso.prazo.trim()}` : ""}`,
           `${s}, tudo bem?\n\nEscrevo por conta do seguinte: ${oQue}.${trechoPrazo(caso)} O que costuma custar caro aqui não é a adequação em si, é perder a data e ter que resolver depois em condição pior.\n\nConsigo agenda esta semana para avaliarmos o que se aplica a vocês. Prefere qual dia?`,
           3,
         ),
@@ -610,18 +610,18 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         monta(
           "Com uma novidade na mão",
           "Retomando nossa conversa",
-          `${s}, tudo bem?\n\nNossa conversa sobre ${nu} ficou de avançar e o tempo passou — ${caso.diasSemResposta} dias, para ser exato.\n\nDo nosso lado o cenário segue o mesmo e continuo à disposição. Retomamos esta semana?`,
+          `${s}, tudo bem?\n\nNossa conversa sobre ${nu} ficou de avançar e o tempo passou - ${caso.diasSemResposta} dias, para ser exato.\n\nDo nosso lado o cenário segue o mesmo e continuo à disposição. Retomamos esta semana?`,
           1,
         ),
         monta(
           "Perguntando o que mudou",
           "O que mudou por aí?",
-          `${s}, tudo bem?\n\nQuando conversamos sobre ${nu}, fazia sentido para vocês. Desde então pode ter mudado a prioridade, o orçamento ou quem toca o tema — e qualquer uma dessas muda o que eu deveria propor.\n\nMe atualiza rapidamente? Assim eu volto com algo alinhado ao momento de agora, não ao de ${caso.diasSemResposta} dias atrás.`,
+          `${s}, tudo bem?\n\nQuando conversamos sobre ${nu}, fazia sentido para vocês. Desde então pode ter mudado a prioridade, o orçamento ou quem toca o tema - e qualquer uma dessas muda o que eu deveria propor.\n\nMe atualiza rapidamente? Assim eu volto com algo alinhado ao momento de agora, não ao de ${caso.diasSemResposta} dias atrás.`,
           2,
         ),
         monta(
           "Colocando um marco no calendário",
-          "Retomada — proposta de data",
+          "Retomada - proposta de data",
           `${s}, tudo bem?\n\nPara não deixarmos ${assunto} parado indefinidamente: posso reservar 30 minutos na semana que vem para retomarmos do ponto onde ficamos.\n\nSe não for o momento, me diga um mês melhor e eu volto lá na frente, sem insistir no meio.`,
           3,
         ),
@@ -632,19 +632,19 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
       return [
         monta(
           "Lembrete cordial",
-          `Pendência — ${assuntoBreve || "documentação"}`,
+          `Pendência - ${assuntoBreve || "documentação"}`,
           `${s}, tudo bem?\n\nEstamos aguardando ${nu} para dar sequência.${trechoPrazo(caso)}\n\nConsegue nos enviar nesta semana?`,
           1,
         ),
         monta(
           "Explicando o que trava",
-          `${assuntoBreve || "Pendência"} — o que depende disso`,
-          `${s}, tudo bem?\n\nNosso andamento está parado aguardando ${nu}.${trechoPrazo(caso)}\n\nEnquanto não recebemos, não conseguimos avançar nas etapas seguintes — e o prazo corre do mesmo jeito. Se houver dificuldade para levantar o material, me diga qual que eu ajudo a resolver.`,
+          `${assuntoBreve || "Pendência"} - o que depende disso`,
+          `${s}, tudo bem?\n\nNosso andamento está parado aguardando ${nu}.${trechoPrazo(caso)}\n\nEnquanto não recebemos, não conseguimos avançar nas etapas seguintes - e o prazo corre do mesmo jeito. Se houver dificuldade para levantar o material, me diga qual que eu ajudo a resolver.`,
           2,
         ),
         monta(
           "Oferecendo caminho alternativo",
-          `${assuntoBreve || "Pendência"} — alternativa`,
+          `${assuntoBreve || "Pendência"} - alternativa`,
           `${s}, tudo bem?\n\nSeguimos aguardando ${nu}. Se estiver difícil reunir tudo, posso trabalhar com o que já tiver disponível e complementamos depois.\n\nMe diga o que consegue enviar hoje que eu sigo com isso.`,
           3,
         ),
@@ -656,18 +656,18 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
         monta(
           "Curto e digno",
           "Encerrando por aqui",
-          `${s}, tudo bem?\n\nTentei contato algumas vezes ${assunto} e não tive retorno, então vou encerrar o acompanhamento por aqui para não tomar mais o seu tempo.\n\nSe o tema voltar à pauta, é só me procurar — fico à disposição.`,
+          `${s}, tudo bem?\n\nTentei contato algumas vezes ${assunto} e não tive retorno, então vou encerrar o acompanhamento por aqui para não tomar mais o seu tempo.\n\nSe o tema voltar à pauta, é só me procurar - fico à disposição.`,
           1,
         ),
         monta(
           "Deixando a porta aberta com data",
-          "Encerrando — retomo mais à frente?",
+          "Encerrando - retomo mais à frente?",
           `${s}, tudo bem?\n\nComo não tivemos retorno ${assunto}, encerro nosso acompanhamento por aqui.\n\nSe preferir, posso retomar daqui a alguns meses, quando o cenário estiver mais claro. Nesse caso, me diga apenas o mês em que devo voltar que eu anoto e não escrevo até lá.`,
           2,
         ),
         monta(
           "Deixando algo de valor ao sair",
-          "Encerrando — e uma última observação",
+          "Encerrando - e uma última observação",
           `${s}, tudo bem?\n\nVou encerrar nosso acompanhamento ${assunto}, já que não foi o momento.\n\nAntes de sair, um ponto que vale independentemente de trabalharmos juntos:${trechoPrazo(caso) || ` ${ofertaDaArea(caso, 2)} costuma ser o primeiro passo mais barato nesse tipo de situação, com qualquer escritório.`}\n\nSucesso por aí.`,
           3,
         ),
@@ -678,14 +678,14 @@ function montarVariacoes(caso: Caso, tom: Tom): Mensagem[] {
       return [
         monta(
           "Boas-vindas e próximo passo",
-          "Boas-vindas — próximos passos",
+          "Boas-vindas - próximos passos",
           `${s}, tudo bem?\n\nQue bom ter${comEmpresa(caso) ? comEmpresa(caso).replace(" da ", " a ") : " vocês"} conosco.\n\nPróximo passo: ${caso.assunto.trim() || "vamos agendar a reunião inicial para alinhar escopo e prazos"}.${trechoPrazo(caso)}\n\nQualquer dúvida no caminho, fale comigo direto.`,
           1,
         ),
         monta(
           "Alinhando o que esperar",
           "Como vamos trabalhar",
-          `${s}, tudo bem?\n\nPara começarmos bem, o combinado do nosso lado:\n\n— Ponto de contato: eu, direto, sem intermediário.\n— Retorno em até um dia útil.\n— Atualização de andamento periódica, mesmo quando não houver novidade.\n\nDo lado de vocês, o que mais ajuda é ${caso.assunto.trim() || "termos um interlocutor definido para as pendências"}.\n\nFaz sentido assim?`,
+          `${s}, tudo bem?\n\nPara começarmos bem, o combinado do nosso lado:\n\n- Ponto de contato: eu, direto, sem intermediário.\n- Retorno em até um dia útil.\n- Atualização de andamento periódica, mesmo quando não houver novidade.\n\nDo lado de vocês, o que mais ajuda é ${caso.assunto.trim() || "termos um interlocutor definido para as pendências"}.\n\nFaz sentido assim?`,
           2,
         ),
         monta(

@@ -78,7 +78,7 @@ function moduloOf(areaId) {
 function ResponsaveisAvatars({ ids }) {
   const profiles = useProfiles();
   const sel = (ids || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean);
-  if (!sel.length) return <span style={{ color: "#94A3B8", fontSize: 11 }}>—</span>;
+  if (!sel.length) return <span style={{ color: "#94A3B8", fontSize: 11 }}>-</span>;
   return (
     <span style={{ display: "inline-flex" }}>
       {sel.slice(0, 4).map((p, i) => (
@@ -180,83 +180,85 @@ function uid() {
 const RISK_QUESTIONS = [
   {
     id: "gov-atas",
-    assunto: "Governanca e atas",
+    assunto: "Governança e atas",
     pergunta:
-      "As reunioes e decisoes relevantes possuem atas, responsaveis e encaminhamentos formalizados?",
-    area: "Governanca",
-    tipoRisco: "Governanca",
+      "As reuniões e decisões relevantes possuem atas, responsáveis e encaminhamentos formalizados?",
+    area: "Governança",
+    tipoRisco: "Governança",
     importancia: "Alta",
     keywords: ["reuniao", "ata", "deliberacao", "comite", "decisao", "encaminhamento"],
-    sugestao: "Formalizar atas de reuniao com decisoes, responsaveis, prazos e evidencias.",
-    planoAcao: "Criar modelo de ata e rotina de registro/aprovacao das reunioes criticas.",
+    sugestao: "Formalizar atas de reunião com decisões, responsáveis, prazos e evidências.",
+    planoAcao: "Criar modelo de ata e rotina de registro/aprovação das reuniões críticas.",
   },
   {
     id: "comp-codigo",
-    assunto: "Codigo de conduta",
-    pergunta: "Existe codigo de conduta aprovado, divulgado e aceito pelos colaboradores?",
+    assunto: "Código de conduta",
+    pergunta: "Existe código de conduta aprovado, divulgado e aceito pelos colaboradores?",
     area: "Compliance",
     tipoRisco: "Compliance",
     importancia: "Alta",
     keywords: ["codigo de conduta", "etica", "conduta", "integridade", "colaborador"],
-    sugestao: "Atualizar ou criar codigo de conduta e registrar ciencia dos colaboradores.",
-    planoAcao: "Revisar codigo, aprovar com a direcao e coletar aceite da equipe.",
+    sugestao: "Atualizar ou criar código de conduta e registrar ciência dos colaboradores.",
+    planoAcao: "Revisar código, aprovar com a direção e coletar aceite da equipe.",
   },
   {
     id: "comp-canal",
-    assunto: "Canal de etica",
-    pergunta: "Ha canal de etica/denuncia com fluxo de tratamento, confidencialidade e registro?",
+    assunto: "Canal de ética",
+    pergunta:
+      "Há canal de ética ou denúncia com fluxo de tratamento, confidencialidade e registro?",
     area: "Compliance",
-    tipoRisco: "Canal de Etica",
+    tipoRisco: "Canal de Ética",
     importancia: "Alta",
     keywords: ["canal de etica", "denuncia", "relato", "confidencial", "ouvidoria"],
-    sugestao: "Implantar canal de etica com procedimento de triagem, investigacao e registro.",
-    planoAcao: "Definir canal, responsaveis, SLA e fluxo de investigacao das ocorrencias.",
+    sugestao: "Implantar canal de ética com procedimento de triagem, investigação e registro.",
+    planoAcao: "Definir canal, responsáveis, SLA e fluxo de investigação das ocorrências.",
   },
   {
     id: "licitacoes-checklist",
-    assunto: "Licitacoes e contratos publicos",
+    assunto: "Licitações e contratos públicos",
     pergunta:
-      "A participacao em licitacoes possui checklist de edital, precificacao, documentacao e aprovacoes?",
+      "A participação em licitações possui checklist de edital, precificação, documentação e aprovações?",
     area: "Comercial",
-    tipoRisco: "Licitacoes",
+    tipoRisco: "Licitações",
     importancia: "Alta",
     keywords: ["licitacao", "edital", "pregao", "contrato publico", "proposta", "precificacao"],
     sugestao:
-      "Criar checklist de conformidade para edital, habilitacao, precificacao e aprovacoes.",
-    planoAcao: "Padronizar analise de edital e validacao juridica/compliance antes de cada envio.",
+      "Criar checklist de conformidade para edital, habilitação, precificação e aprovações.",
+    planoAcao:
+      "Padronizar análise de edital e validação jurídica ou de compliance antes de cada envio.",
   },
   {
     id: "ti-backup",
-    assunto: "Seguranca da informacao",
+    assunto: "Segurança da informação",
     pergunta:
-      "Os documentos e dados criticos possuem backup, controle de acesso e armazenamento seguro?",
+      "Os documentos e dados críticos possuem backup, controle de acesso e armazenamento seguro?",
     area: "TI",
-    tipoRisco: "Seguranca da Informacao",
+    tipoRisco: "Segurança da Informação",
     importancia: "Alta",
     keywords: ["servidor", "backup", "nuvem", "drive", "acesso", "senha", "documentos", "arquivo"],
-    sugestao: "Migrar ou organizar armazenamento seguro, backup periodico e controle de acessos.",
+    sugestao: "Migrar ou organizar armazenamento seguro, backup periódico e controle de acessos.",
     planoAcao:
-      "Mapear repositorios, revisar permissoes e criar rotina de backup e auditoria de acesso.",
+      "Mapear repositórios, revisar permissões e criar rotina de backup e auditoria de acesso.",
   },
   {
     id: "lgpd-dados",
-    assunto: "Dados pessoais e retencao",
-    pergunta: "Dados pessoais, documentos fisicos e prazos de retencao/descarte estao mapeados?",
+    assunto: "Dados pessoais e retenção",
+    pergunta: "Dados pessoais, documentos físicos e prazos de retenção ou descarte estão mapeados?",
     area: "LGPD",
     tipoRisco: "Privacidade",
-    importancia: "Media",
+    importancia: "Média",
     keywords: ["dados pessoais", "cpf", "rg", "lgpd", "documento fisico", "retencao", "descarte"],
-    sugestao: "Mapear dados pessoais, bases legais, locais de armazenamento e prazos de retencao.",
-    planoAcao: "Criar inventario de dados e tabela de retencao/descarte por tipo documental.",
+    sugestao: "Mapear dados pessoais, bases legais, locais de armazenamento e prazos de retenção.",
+    planoAcao: "Criar inventário de dados e tabela de retenção e descarte por tipo documental.",
   },
   {
     id: "terceiros",
     assunto: "Terceiros e prestadores",
     pergunta:
-      "Terceiros criticos possuem due diligence, contrato e regras de confidencialidade/protecao de dados?",
-    area: "Juridico",
+      "Terceiros críticos possuem due diligence, contrato e regras de confidencialidade e proteção de dados?",
+    area: "Jurídico",
     tipoRisco: "Terceiros",
-    importancia: "Media",
+    importancia: "Média",
     keywords: [
       "terceiro",
       "prestador",
@@ -267,47 +269,47 @@ const RISK_QUESTIONS = [
       "dpa",
     ],
     sugestao:
-      "Implementar due diligence de terceiros e revisar contratos com clausulas obrigatorias.",
-    planoAcao: "Classificar terceiros por risco e solicitar documentos/contratos pendentes.",
+      "Implementar due diligence de terceiros e revisar contratos com cláusulas obrigatórias.",
+    planoAcao: "Classificar terceiros por risco e solicitar documentos ou contratos pendentes.",
   },
   {
     id: "politicas",
-    assunto: "Politicas internas",
+    assunto: "Políticas internas",
     pergunta:
-      "As politicas internas possuem versao, aprovacao, responsavel, validade e evidencia de divulgacao?",
+      "As políticas internas possuem versão, aprovação, responsável, validade e evidência de divulgação?",
     area: "Compliance",
-    tipoRisco: "Documentos e Politicas",
-    importancia: "Media",
+    tipoRisco: "Documentos e Políticas",
+    importancia: "Média",
     keywords: ["politica", "procedimento", "norma interna", "manual", "versao", "aprovacao"],
     sugestao:
-      "Criar matriz de politicas com responsavel, revisao, aprovacao e evidencia de comunicacao.",
-    planoAcao: "Levantar politicas existentes e priorizar criacao/revisao das obrigatorias.",
+      "Criar matriz de políticas com responsável, revisão, aprovação e evidência de comunicação.",
+    planoAcao: "Levantar políticas existentes e priorizar criação ou revisão das obrigatórias.",
   },
   {
     id: "regulatorio-bcb",
-    assunto: "Base normativa e regulatorio",
+    assunto: "Base normativa e regulatório",
     pergunta:
-      "As obrigacoes regulatorias aplicaveis estao mapeadas em base normativa com plano de acao e status?",
-    area: "Regulatorio",
-    tipoRisco: "Regulatorio",
+      "As obrigações regulatórias aplicáveis estão mapeadas em base normativa com plano de ação e status?",
+    area: "Regulatório",
+    tipoRisco: "Regulatório",
     importancia: "Alta",
     keywords: ["banco central", "bcb", "pix", "resolucao", "circular", "unicad", "normativo"],
     sugestao:
-      "Consolidar base normativa aplicavel e controlar gaps por prioridade, responsavel e status.",
+      "Consolidar base normativa aplicável e controlar gaps por prioridade, responsável e status.",
     planoAcao:
-      "Montar matriz regulatoria com base normativa, descricao, plano de acao, prioridade e status.",
+      "Montar matriz regulatória com base normativa, descrição, plano de ação, prioridade e status.",
   },
   {
     id: "treinamento",
     assunto: "Treinamentos",
     pergunta:
-      "Existe trilha de treinamento e evidencia de participacao para temas de compliance, LGPD e seguranca?",
+      "Existe trilha de treinamento e evidência de participação para temas de compliance, LGPD e segurança?",
     area: "RH",
     tipoRisco: "Treinamento",
-    importancia: "Media",
+    importancia: "Média",
     keywords: ["treinamento", "capacitacao", "colaborador", "onboarding", "reciclagem"],
-    sugestao: "Criar matriz de treinamentos obrigatorios e evidencias de participacao.",
-    planoAcao: "Definir conteudo, periodicidade, publico-alvo e controle de presenca.",
+    sugestao: "Criar matriz de treinamentos obrigatórios e evidências de participação.",
+    planoAcao: "Definir conteúdo, periodicidade, público-alvo e controle de presença.",
   },
 ];
 
@@ -371,7 +373,7 @@ function riskRowFromQuestion(question, atende = "P", origem = "Questionario") {
     sugestao: question.sugestao,
     planoAcao: question.planoAcao,
     importancia: question.importancia,
-    status: "Nao iniciado",
+    status: "Não iniciado",
     evidencia: "",
   };
 }
@@ -381,23 +383,23 @@ function generateRiskRowsFromTranscript(transcript = "") {
   RISK_QUESTIONS.forEach((question) => {
     const atende = inferRiskAnswer(transcript, question);
     if (!atende) return;
-    rows.push(riskRowFromQuestion(question, atende, "Transcricao"));
+    rows.push(riskRowFromQuestion(question, atende, "Transcrição"));
   });
   if (!rows.length && transcript.trim()) {
     rows.push({
       id: `risk${uid()}`,
       sourceId: "geral",
-      origem: "Transcricao",
+      origem: "Transcrição",
       assunto: "Diagnostico geral",
-      atividade: "Transcricao recebida sem tema automaticamente identificado.",
+      atividade: "Transcrição recebida sem tema identificado automaticamente.",
       area: "Compliance",
       atende: "P",
       tipoRisco: "Diagnostico",
-      sugestao: "Revisar a transcricao manualmente e classificar os gaps relevantes.",
+      sugestao: "Revisar a transcrição manualmente e classificar os gaps relevantes.",
       planoAcao:
         "Complementar o questionario e transformar os pontos relevantes em itens do plano.",
-      importancia: "Media",
-      status: "Nao iniciado",
+      importancia: "Média",
+      status: "Não iniciado",
       evidencia: transcript.slice(0, 240),
     });
   }
@@ -809,8 +811,8 @@ const TEMPLATES = {
       name: "Documentos Jurídicos",
       items: [
         "Política de Privacidade Final",
-        "Contrato de Trabalho – Auxiliar Administrativo",
-        "Contrato de Trabalho – Advogados",
+        "Contrato de Trabalho - Auxiliar Administrativo",
+        "Contrato de Trabalho - Advogados",
         "Política Interna",
         "Termos de Consentimento",
         "Disclaimer de E-mails Corporativos",
@@ -858,7 +860,7 @@ const TEMPLATES = {
         "Termo de Imagem e Voz",
         "Termo de Comodato Equipamentos",
         "Termo de Comodato Veículos",
-        "Termo de Uso – Website",
+        "Termo de Uso - Website",
       ],
     },
     { name: "Canais", items: ["Canal de Ética", "Ouvidoria"] },
@@ -2251,7 +2253,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
         <textarea
           value={cliente.descricao || ""}
           onChange={(e) => updateCliente({ descricao: e.target.value })}
-          placeholder="DescriÃ§Ã£o aberta do cliente, contexto, combinados e observaÃ§Ãµes gerais..."
+          placeholder="Descrição aberta do cliente, contexto, combinados e observações gerais..."
           rows={3}
           style={{ ...inp, width: "100%", resize: "vertical", marginBottom: 12, lineHeight: 1.5 }}
         />
@@ -2268,7 +2270,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
             ["documento", "CPF / CNPJ"],
             ["email", "E-mail"],
             ["telefone", "Telefone"],
-            ["endereco", "EndereÃ§o"],
+            ["endereco", "Endereço"],
           ].map(([field, placeholder]) => (
             <input
               key={field}
@@ -2743,7 +2745,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                         marginBottom: 10,
                       }}
                     >
-                      Histórico de Notas — {plano.name}
+                      Histórico de Notas - {plano.name}
                     </p>
                     {(plano.notas || []).length === 0 ? (
                       <p
@@ -2789,7 +2791,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                                   · {n.autor_nome}
                                 </span>
                               )}
-                              {" — "}
+                              {" - "}
                               <MentionText text={n.text} />
                             </p>
                             <button
@@ -3140,12 +3142,12 @@ function RiskAssessmentPanel({ area, cliente, plano, onAssessmentChange, onCreat
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 16 }}>
         <div>
           <p style={{ color: "#0F172A", fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-            Transcricao da reuniao inicial
+            Transcrição da reunião inicial
           </p>
           <MentionTextarea
             value={transcriptDraft}
             onChange={setTranscriptDraft}
-            placeholder="Cole aqui a transcricao ou resumo da reuniao..."
+            placeholder="Cole aqui a transcrição ou resumo da reunião..."
             rows={8}
           />
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -3224,7 +3226,7 @@ function RiskAssessmentPanel({ area, cliente, plano, onAssessmentChange, onCreat
                   <input
                     value={answer.evidencia || ""}
                     onChange={(e) => updateEvidence(question, e.target.value)}
-                    placeholder="Evidencia ou observacao..."
+                    placeholder="Evidência ou observação..."
                     style={{ ...inp, marginTop: 8, width: "100%" }}
                   />
                 </div>
@@ -3262,7 +3264,7 @@ function RiskAssessmentPanel({ area, cliente, plano, onAssessmentChange, onCreat
               borderBottom: "1px solid #E2E8F0",
             }}
           >
-            {["Assunto", "Atende", "Area", "Risco", "Sugestao", "Plano de acao", "Prior.", ""].map(
+            {["Assunto", "Atende", "Área", "Risco", "Sugestão", "Plano de ação", "Prior.", ""].map(
               (h) => (
                 <span
                   key={h}
@@ -3437,11 +3439,11 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
           .filter((row) => !existing.has(row.id))
           .map((row) => ({
             id: `it${uid()}`,
-            name: row.planoAcao || row.sugestao || row.assunto || "Acao de Risk Assessment",
+            name: row.planoAcao || row.sugestao || row.assunto || "Ação de Risk Assessment",
             tipo: row.tipoRisco === "Documentos e Politicas" ? "Documento" : "Processo",
             responsavel: "",
             responsaveis: [],
-            status: "Nao iniciado",
+            status: "Não iniciado",
             kanbanStatus: "Suspenso",
             prazo: "",
             riskAssessmentId: row.id,
@@ -3458,7 +3460,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
               `Area: ${row.area || "-"}`,
               `Risco: ${row.tipoRisco || "-"}`,
               `Atende: ${row.atende || "-"}`,
-              `Sugestao: ${row.sugestao || "-"}`,
+              `Sugestão: ${row.sugestao || "-"}`,
             ].join("\n"),
           }));
         return [...items, ...newItems];
@@ -5043,7 +5045,7 @@ function ProdutoDetail({ prodId, data, setData, nav }) {
                         fontStyle: "italic",
                       }}
                     >
-                      nenhum ainda — ative nas áreas de Compliance ou LGPD
+                      nenhum ainda - ative nas áreas de Compliance ou LGPD
                     </span>
                   )}
                 </p>

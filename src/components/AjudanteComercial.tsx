@@ -234,7 +234,7 @@ export default function AjudanteComercial() {
           <input
             value={caso.prazo}
             onChange={(e) => set({ prazo: e.target.value })}
-            placeholder="Ex.: até 20/10 — escreva do jeito que vai aparecer na mensagem"
+            placeholder="Ex.: até 20/10 - escreva do jeito que vai aparecer na mensagem"
             style={{ ...campo, width: "100%", marginBottom: 14 }}
           />
 
@@ -365,7 +365,7 @@ export default function AjudanteComercial() {
 
                 {passou && (
                   <p style={{ fontSize: 10, color: "#B45309", marginTop: 8 }}>
-                    Longa para {CANAIS.find((c) => c.id === caso.canal)?.nome} — considere cortar.
+                    Longa para {CANAIS.find((c) => c.id === caso.canal)?.nome} - considere cortar.
                   </p>
                 )}
               </div>
@@ -383,7 +383,7 @@ export default function AjudanteComercial() {
             }}
           >
             <strong>Depois de enviar:</strong> {resultado.sugestaoProximoPasso} Registre como
-            follow-up no card do negócio, com a data — assim ele cobra você de volta.
+            follow-up no card do negócio, com a data - assim ele cobra você de volta.
           </div>
         </div>
       </div>

@@ -109,7 +109,7 @@ export function textoAcompanhamento(item: Item, agora: Date): string | null {
     partes.push(`checklist ${checklist.filter((c) => c.done).length}/${checklist.length}`);
   }
 
-  return `Acompanhamento semanal — ${partes.join(" · ")}`;
+  return `Acompanhamento semanal - ${partes.join(" · ")}`;
 }
 
 /** Já existe acompanhamento desta semana neste item? */
