@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { Download, Clock, AlertTriangle, CheckCircle2, Users, Activity, Inbox } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
-import { COLUMN_COLORS } from "@/lib/flattenItems";
+import { COLUMN_COLORS, KANBAN_COLUMNS } from "@/lib/flattenItems";
 import {
   achatarItens,
   cargaPorPessoa,

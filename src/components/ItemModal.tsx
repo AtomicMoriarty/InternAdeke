@@ -996,6 +996,25 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 )}
               </div>
 
+              {/* A data de início já era gravada na criação e lida pela linha do
+                  tempo e pelos relatórios, mas não aparecia no card — só dava
+                  para corrigir pelo Gantt. Um card sem início vira barra
+                  estimada lá, então é aqui que se acerta. */}
+              <div style={{ minWidth: 150 }}>
+                <Label>Início</Label>
+                <input
+                  type="date"
+                  value={brParaISO(item.dataInicio || "")}
+                  onChange={(e) => patchItem({ dataInicio: isoParaBR(e.target.value) })}
+                  style={{ ...fieldStyle, width: 150 }}
+                />
+                {!item.dataInicio && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#94A3B8" }}>
+                    sem início — a linha do tempo estima
+                  </div>
+                )}
+              </div>
+
               <div style={{ minWidth: 220 }}>
                 <Label>Deadline</Label>
                 <input

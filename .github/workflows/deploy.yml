@@ -33,6 +33,12 @@ jobs:
       - name: Conferir tipos
         run: npm run typecheck
 
+      # O typecheck nao enxerga os arquivos com @ts-nocheck, que e justamente
+      # onde os dois "Cannot find name" que quebraram producao se esconderam.
+      # Este confere so essa classe, e confere em todo mundo.
+      - name: Conferir nomes indefinidos
+        run: npm run nomes
+
       - name: Build
         run: npm run build
         env:
