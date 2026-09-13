@@ -5,6 +5,7 @@ import {
   Shield,
   Lock,
   Rocket,
+  Sparkles,
   Home,
   CheckCircle,
   Clock,
@@ -59,6 +60,7 @@ import {
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import FunilComercial from "@/components/FunilComercial";
+import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente } from "@/lib/comercial";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
@@ -5844,6 +5846,15 @@ const NAV = [
     view: { page: "area", areaId: "comercial" },
   },
   {
+    // Divisao propria: quem escreve o follow-up nem sempre esta com o card
+    // aberto, entao a ferramenta precisa existir sozinha na barra lateral.
+    id: "ajudante",
+    label: "Ajudante Comercial",
+    Icon: Sparkles,
+    color: "#EC4899",
+    view: { page: "ajudante" },
+  },
+  {
     id: "produtos",
     label: "Produtos & Soluções",
     Icon: Rocket,
@@ -5856,6 +5867,7 @@ function navActiveId(view) {
   if (view.page === "dashboard") return "dashboard";
   if (view.page === "area" || view.page === "cliente" || view.page === "plano") return view.areaId;
   if (view.page === "produtos" || view.page === "produto") return "produtos";
+  if (view.page === "ajudante") return "ajudante";
   return "";
 }
 
@@ -5866,6 +5878,8 @@ function canAccessView(view, allowedModules) {
   }
   if (view.page === "produtos" || view.page === "produto")
     return allowedModules.includes("produtos");
+  // O ajudante e ferramenta do Comercial: quem ve o quadro, ve o ajudante.
+  if (view.page === "ajudante") return allowedModules.includes("comercial");
   return true;
 }
 
@@ -5894,7 +5908,10 @@ export default function App() {
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
   const allowedModules = allowedModulesFor(currentProfile);
   const visibleNav = NAV.filter(
-    (item) => item.id === "dashboard" || allowedModules.includes(item.id),
+    (item) =>
+      item.id === "dashboard" ||
+      allowedModules.includes(item.id) ||
+      (item.id === "ajudante" && allowedModules.includes("comercial")),
   );
   const activeId = navActiveId(view);
 
@@ -6293,6 +6310,9 @@ export default function App() {
               )}
               {view.page === "produto" && allowedModules.includes("produtos") && (
                 <ProdutoDetail prodId={view.prodId} data={data} setData={setData} nav={setView} />
+              )}
+              {view.page === "ajudante" && allowedModules.includes("comercial") && (
+                <AjudanteComercial />
               )}
             </div>
           )}
