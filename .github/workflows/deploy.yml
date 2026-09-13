@@ -1,0 +1,42 @@
+name: Publicar no Cloudflare
+
+# Publica a cada push na main. Também dá para disparar à mão pela aba Actions.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Uma publicação por vez: se dois pushes chegarem juntos, o segundo espera em
+# vez de correr em paralelo e sobrescrever fora de ordem.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # O Vite injeta estas na hora do build; sem elas o app sobe sem
+          # conseguir falar com o Supabase.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Publicar
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
