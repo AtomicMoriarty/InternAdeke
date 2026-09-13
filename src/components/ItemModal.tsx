@@ -28,6 +28,7 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import { moduloOf } from "@/lib/areas";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
+import { enviarAnexo, linkTemporario, apagarAnexo, formatarTamanho, TAMANHO_MAXIMO } from "@/lib/anexos";
 
 const KANBAN_COLUMNS = [
   "A Fazer",
@@ -142,6 +143,9 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const [showAnexoForm, setShowAnexoForm] = useState(false);
   const [newAnexoName, setNewAnexoName] = useState("");
   const [newAnexoUrl, setNewAnexoUrl] = useState("");
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [erroAnexo, setErroAnexo] = useState("");
+  const arquivoRef = useRef<HTMLInputElement>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -400,7 +404,53 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     setShowAnexoForm(false);
   }
 
-  function removeAnexo(id: string) {
+  async function enviarArquivo(arquivo: File) {
+    if (!arquivo) return;
+    setErroAnexo("");
+    setEnviandoAnexo(true);
+    const r = await enviarAnexo(arquivo, itemId, {
+      id: currentUser?.id || null,
+      nome: currentProfile?.display_name || currentUser?.email || "sistema",
+    });
+    setEnviandoAnexo(false);
+    if (!r.ok) {
+      setErroAnexo(r.erro);
+      return;
+    }
+    patchItem({
+      anexos: [
+        ...(item.anexos || []),
+        {
+          id: r.anexo.id,
+          name: r.anexo.nome,
+          caminho: r.anexo.caminho,
+          tamanho: r.anexo.tamanho,
+          tipo: r.anexo.tipo,
+          created_at: r.anexo.enviadoEm,
+          autor_id: r.anexo.autorId,
+          autor_nome: r.anexo.autorNome,
+        },
+      ],
+    });
+    setShowAnexoForm(false);
+  }
+
+  /** O arquivo e privado: abre por link assinado, gerado na hora. */
+  async function abrirAnexo(anexo: any) {
+    if (!anexo.caminho) {
+      if (anexo.url) window.open(anexo.url, "_blank", "noreferrer");
+      return;
+    }
+    const url = await linkTemporario(anexo.caminho);
+    if (url) window.open(url, "_blank", "noreferrer");
+    else setErroAnexo("Não consegui gerar o link do arquivo. Tente de novo.");
+  }
+
+  async function removeAnexo(id: string) {
+    const anexo = (item.anexos || []).find((a: any) => a.id === id);
+    // Tira da lista mesmo que o storage falhe: ficar preso na tela e pior que
+    // um arquivo orfao no bucket.
+    if (anexo?.caminho) await apagarAnexo(anexo.caminho);
     patchItem({ anexos: (item.anexos || []).filter((a: any) => a.id !== id) });
   }
 
@@ -991,10 +1041,9 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                         }}
                       >
                         <Paperclip size={13} color="#64748B" />
-                        <a
-                          href={anexo.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          onClick={() => abrirAnexo(anexo)}
+                          title={anexo.caminho ? "Abrir arquivo" : "Abrir link"}
                           style={{
                             flex: 1,
                             minWidth: 0,
@@ -1005,10 +1054,21 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            textAlign: "left",
+                            fontFamily: "inherit",
                           }}
                         >
                           {anexo.name || anexo.url}
-                        </a>
+                          {anexo.tamanho ? (
+                            <span style={{ color: "#94A3B8", fontWeight: 500, marginLeft: 6 }}>
+                              {formatarTamanho(anexo.tamanho)}
+                            </span>
+                          ) : null}
+                        </button>
                         <button
                           onClick={() => removeAnexo(anexo.id)}
                           title="Remover anexo"
@@ -1021,7 +1081,52 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   </div>
                 )}
                 {showAnexoForm && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  <div style={{ marginTop: 8 }}>
+                    {/* Arquivo de verdade, guardado no bucket privado */}
+                    <input
+                      ref={arquivoRef}
+                      type="file"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) enviarArquivo(f);
+                      }}
+                    />
+                    <button
+                      onClick={() => arquivoRef.current?.click()}
+                      disabled={enviandoAnexo}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        background: enviandoAnexo ? "#F1F5F9" : "#0DD3C5",
+                        color: enviandoAnexo ? "#94A3B8" : "#fff",
+                        border: "none", borderRadius: 8, padding: "8px 14px",
+                        fontSize: 12, fontWeight: 700,
+                        cursor: enviandoAnexo ? "default" : "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      <Paperclip size={13} />
+                      {enviandoAnexo ? "Enviando…" : "Escolher arquivo"}
+                    </button>
+                    <span style={{ fontSize: 10.5, color: "#94A3B8", marginLeft: 8 }}>
+                      até {formatarTamanho(TAMANHO_MAXIMO)} · PDF, Word, Excel, imagens
+                    </span>
+
+                    {erroAnexo && (
+                      <div style={{
+                        marginTop: 8, padding: "7px 10px", borderRadius: 8,
+                        background: "#FEF2F2", border: "1px solid #FECACA",
+                        color: "#DC2626", fontSize: 11.5, fontWeight: 600,
+                      }}>{erroAnexo}</div>
+                    )}
+
+                    <div style={{ fontSize: 10, color: "#CBD5E1", margin: "12px 0 6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                      ou cole um link
+                    </div>
+                  </div>
+                )}
+                {showAnexoForm && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <input
                       value={newAnexoName}
                       onChange={(e) => setNewAnexoName(e.target.value)}
@@ -1029,7 +1134,6 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                       style={{ ...fieldStyle, flex: "1 1 160px" }}
                     />
                     <input
-                      autoFocus
                       value={newAnexoUrl}
                       onChange={(e) => setNewAnexoUrl(e.target.value)}
                       onKeyDown={(e) => {
