@@ -14,6 +14,8 @@ export type Profile = {
   role?: "admin" | "member";
   access_enabled?: boolean;
   allowed_modules?: string[];
+  /** Enxerga os valores em R$ do funil comercial. Honorário é dado sensível. */
+  pode_ver_valores?: boolean;
 };
 
 let cache: Profile[] | null = null;
@@ -32,6 +34,8 @@ function normalizeProfile(profile: Partial<Profile>): Profile {
     allowed_modules: Array.isArray(profile.allowed_modules)
       ? profile.allowed_modules
       : DEFAULT_ALLOWED_MODULES,
+    // Ausente (coluna ainda não migrada) vale como falso: nunca vazar por engano.
+    pode_ver_valores: profile.pode_ver_valores === true,
   };
 }
 

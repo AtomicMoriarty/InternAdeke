@@ -58,6 +58,8 @@ import {
   MODULO_PRODUTOS,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
+import FunilComercial from "@/components/FunilComercial";
+import { ehAreaComercial, contatosDoCliente } from "@/lib/comercial";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -1476,6 +1478,10 @@ function AreaView({ areaId, data, setData, nav }) {
   const profiles = useProfiles();
   const currentProfile = me ? profiles.find((p) => p.id === me.id) : null;
   const AIcon = AREA_ICONS[AREAS.find((x) => x.id === areaId)?.icon] || Shield;
+  // O Comercial abre no funil: e a leitura que a equipe de vendas usa todo dia.
+  // As outras areas nem sabem que essa aba existe.
+  const ehComercial = ehAreaComercial(areaId);
+  const [vista, setVista] = useState(ehComercial ? "funil" : "clientes");
 
   const { total, done, pct } = areaProg(area);
 
@@ -1651,221 +1657,260 @@ function AreaView({ areaId, data, setData, nav }) {
         </div>
       </div>
 
-      {/* Add client */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 20,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addCliente()}
-          placeholder="Nome do cliente..."
-          style={{ ...inp, flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px" }}
-        />
-        <ResponsaveisPicker
-          value={newClienteResp}
-          onChange={setNewClienteResp}
-          label="Responsáveis"
-        />
-        <button
-          onClick={addCliente}
-          style={{
-            background: area.color,
-            border: "none",
-            borderRadius: 8,
-            padding: "9px 16px",
-            color: "#fff",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: "inherit",
-          }}
-        >
-          <Plus size={15} /> Adicionar Cliente
-        </button>
-      </div>
-
-      {/* Client grid */}
-      {area.clientes.length === 0 ? (
-        <div
-          style={{
-            background: "#FFFFFF",
-            border: "1px dashed #1e2d45",
-            borderRadius: 16,
-            padding: 48,
-            textAlign: "center",
-          }}
-        >
-          <Building2 size={28} color="#E2E8F0" style={{ margin: "0 auto 12px" }} />
-          <p style={{ color: "#94A3B8", fontSize: 14, fontWeight: 600 }}>
-            Nenhum cliente cadastrado
-          </p>
-          <p style={{ color: "#E2E8F0", fontSize: 12, marginTop: 4 }}>
-            Adicione o primeiro cliente acima para começar
-          </p>
+      {ehComercial && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+          {[
+            ["funil", "Funil de vendas"],
+            ["clientes", "Empresas"],
+          ].map(([id, rotulo]) => (
+            <button
+              key={id}
+              onClick={() => setVista(id)}
+              style={{
+                background: vista === id ? area.color : "#fff",
+                color: vista === id ? "#fff" : "#64748B",
+                border: `1px solid ${vista === id ? area.color : "#E2E8F0"}`,
+                borderRadius: 8,
+                padding: "7px 14px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              {rotulo}
+            </button>
+          ))}
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          {area.clientes.map((cliente) => {
-            const cItems = cliente.planos.flatMap((p) => p.items);
-            const { total: ct, done: cd, pct: cp } = prog(cItems);
-            return (
-              <div
-                key={cliente.id}
-                style={{
-                  background: "#FFFFFF",
-                  border: `1px solid ${area.color}28`,
-                  borderRadius: 16,
-                  padding: 22,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: 14,
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <div
-                        style={{
-                          background: `${area.color}18`,
-                          borderRadius: 8,
-                          padding: "5px 6px",
-                          display: "flex",
-                        }}
-                      >
-                        <Building2 size={14} color={area.color} />
-                      </div>
-                      <span style={{ color: "#0F172A", fontSize: 15, fontWeight: 800 }}>
-                        {cliente.name}
-                      </span>
-                    </div>
-                    <p style={{ color: "#64748B", fontSize: 11, marginBottom: 12 }}>
-                      {cliente.planos.length} plano{cliente.planos.length !== 1 ? "s" : ""} · {ct}{" "}
-                      item{ct !== 1 ? "s" : ""}
-                    </p>
-                    {(cliente.tags || []).length > 0 && (
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
-                        {(cliente.tags || []).slice(0, 4).map((tag) => (
-                          <span
-                            key={tag}
+      )}
+
+      {ehComercial && vista === "funil" && <FunilComercial data={data} setData={setData} />}
+
+      {(!ehComercial || vista === "clientes") && (
+        <>
+          {/* Add client */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 20,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addCliente()}
+              placeholder="Nome do cliente..."
+              style={{ ...inp, flex: 1, minWidth: 200, fontSize: 13, padding: "9px 14px" }}
+            />
+            <ResponsaveisPicker
+              value={newClienteResp}
+              onChange={setNewClienteResp}
+              label="Responsáveis"
+            />
+            <button
+              onClick={addCliente}
+              style={{
+                background: area.color,
+                border: "none",
+                borderRadius: 8,
+                padding: "9px 16px",
+                color: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: "inherit",
+              }}
+            >
+              <Plus size={15} /> Adicionar Cliente
+            </button>
+          </div>
+
+          {/* Client grid */}
+          {area.clientes.length === 0 ? (
+            <div
+              style={{
+                background: "#FFFFFF",
+                border: "1px dashed #1e2d45",
+                borderRadius: 16,
+                padding: 48,
+                textAlign: "center",
+              }}
+            >
+              <Building2 size={28} color="#E2E8F0" style={{ margin: "0 auto 12px" }} />
+              <p style={{ color: "#94A3B8", fontSize: 14, fontWeight: 600 }}>
+                Nenhum cliente cadastrado
+              </p>
+              <p style={{ color: "#E2E8F0", fontSize: 12, marginTop: 4 }}>
+                Adicione o primeiro cliente acima para começar
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {area.clientes.map((cliente) => {
+                const cItems = cliente.planos.flatMap((p) => p.items);
+                const { total: ct, done: cd, pct: cp } = prog(cItems);
+                return (
+                  <div
+                    key={cliente.id}
+                    style={{
+                      background: "#FFFFFF",
+                      border: `1px solid ${area.color}28`,
+                      borderRadius: 16,
+                      padding: 22,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: 14,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}
+                        >
+                          <div
                             style={{
-                              background: `${area.color}12`,
-                              color: area.color,
-                              borderRadius: 6,
-                              padding: "3px 6px",
-                              fontSize: 10,
+                              background: `${area.color}18`,
+                              borderRadius: 8,
+                              padding: "5px 6px",
+                              display: "flex",
+                            }}
+                          >
+                            <Building2 size={14} color={area.color} />
+                          </div>
+                          <span style={{ color: "#0F172A", fontSize: 15, fontWeight: 800 }}>
+                            {cliente.name}
+                          </span>
+                        </div>
+                        <p style={{ color: "#64748B", fontSize: 11, marginBottom: 12 }}>
+                          {cliente.planos.length} plano{cliente.planos.length !== 1 ? "s" : ""} ·{" "}
+                          {ct} item{ct !== 1 ? "s" : ""}
+                        </p>
+                        {(cliente.tags || []).length > 0 && (
+                          <div
+                            style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}
+                          >
+                            {(cliente.tags || []).slice(0, 4).map((tag) => (
+                              <span
+                                key={tag}
+                                style={{
+                                  background: `${area.color}12`,
+                                  color: area.color,
+                                  borderRadius: 6,
+                                  padding: "3px 6px",
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <Bar2 pct={cp} color={area.color} />
+                      </div>
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 14 }}
+                      >
+                        <div
+                          style={{
+                            position: "relative",
+                            width: 54,
+                            height: 54,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Ring pct={cp} color={area.color} size={54} stroke={5} />
+                          <span
+                            style={{
+                              position: "absolute",
+                              color: "#0F172A",
+                              fontSize: 11,
                               fontWeight: 800,
                             }}
                           >
-                            {tag}
+                            {cp}%
                           </span>
-                        ))}
+                        </div>
                       </div>
-                    )}
-                    <Bar2 pct={cp} color={area.color} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 14 }}>
-                    <div
-                      style={{
-                        position: "relative",
-                        width: 54,
-                        height: 54,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Ring pct={cp} color={area.color} size={54} stroke={5} />
-                      <span
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => nav({ page: "cliente", areaId, clienteId: cliente.id })}
                         style={{
-                          position: "absolute",
-                          color: "#0F172A",
-                          fontSize: 11,
-                          fontWeight: 800,
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 5,
+                          background: `${area.color}18`,
+                          border: `1px solid ${area.color}30`,
+                          borderRadius: 8,
+                          color: area.color,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: "7px 0",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
                         }}
                       >
-                        {cp}%
-                      </span>
+                        <FolderOpen size={13} /> Ver Planos <ChevronRight size={12} />
+                      </button>
+                      <button
+                        onClick={() => toggleCanalEtica(cliente.id)}
+                        title="Ativar/desativar Canal de Ética para este cliente"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "7px 12px",
+                          borderRadius: 8,
+                          background: cliente.canalEtica ? "#FDF2F8" : "#F8FAFC",
+                          border: `1px solid ${cliente.canalEtica ? "#EC489950" : "#E2E8F0"}`,
+                          color: cliente.canalEtica ? "#EC4899" : "#94A3B8",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        🛡️ {cliente.canalEtica ? "Canal ✓" : "Canal"}
+                      </button>
+                      <button
+                        onClick={() => removeCliente(cliente.id)}
+                        style={{
+                          background: "#ef444415",
+                          border: "1px solid #ef444430",
+                          borderRadius: 8,
+                          color: "#ef4444",
+                          padding: "7px 10px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => nav({ page: "cliente", areaId, clienteId: cliente.id })}
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 5,
-                      background: `${area.color}18`,
-                      border: `1px solid ${area.color}30`,
-                      borderRadius: 8,
-                      color: area.color,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      padding: "7px 0",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    <FolderOpen size={13} /> Ver Planos <ChevronRight size={12} />
-                  </button>
-                  <button
-                    onClick={() => toggleCanalEtica(cliente.id)}
-                    title="Ativar/desativar Canal de Ética para este cliente"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      padding: "7px 12px",
-                      borderRadius: 8,
-                      background: cliente.canalEtica ? "#FDF2F8" : "#F8FAFC",
-                      border: `1px solid ${cliente.canalEtica ? "#EC489950" : "#E2E8F0"}`,
-                      color: cliente.canalEtica ? "#EC4899" : "#94A3B8",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    🛡️ {cliente.canalEtica ? "Canal ✓" : "Canal"}
-                  </button>
-                  <button
-                    onClick={() => removeCliente(cliente.id)}
-                    style={{
-                      background: "#ef444415",
-                      border: "1px solid #ef444430",
-                      borderRadius: 8,
-                      color: "#ef4444",
-                      padding: "7px 10px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1882,6 +1927,7 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
   const [newTag, setNewTag] = useState("");
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
+  const [novoContato, setNovoContato] = useState({ nome: "", cargo: "", telefone: "", email: "" });
   const me = useCurrentUser();
   const profiles = useProfiles();
   const currentProfile = me ? profiles.find((p) => p.id === me.id) : null;
@@ -1914,6 +1960,30 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
         [field]: value,
       },
     });
+  }
+
+  // Contatos da empresa. O dadosEmpresa guarda um contato so; comercial fala
+  // com varias pessoas na mesma empresa e precisa saber quem e quem.
+  function addContato() {
+    const nome = novoContato.nome.trim();
+    if (!nome) return;
+    updateCliente({
+      contatos: [
+        ...contatosDoCliente(cliente),
+        {
+          id: `ct${uid()}`,
+          nome,
+          cargo: novoContato.cargo.trim(),
+          telefone: novoContato.telefone.trim(),
+          email: novoContato.email.trim(),
+        },
+      ],
+    });
+    setNovoContato({ nome: "", cargo: "", telefone: "", email: "" });
+  }
+
+  function removeContato(id) {
+    updateCliente({ contatos: contatosDoCliente(cliente).filter((c) => c.id !== id) });
   }
 
   function addClienteTag() {
@@ -2194,6 +2264,106 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
             />
           ))}
         </div>
+        {ehAreaComercial(areaId) && (
+          <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #F1F5F9" }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: "#94A3B8",
+                textTransform: "uppercase",
+                letterSpacing: 0.7,
+                marginBottom: 8,
+              }}
+            >
+              Contatos na empresa
+            </div>
+            {contatosDoCliente(cliente).map((ct) => (
+              <div
+                key={ct.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "7px 0",
+                  borderBottom: "1px solid #F8FAFC",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    background: colorFor(ct.id),
+                    color: "#fff",
+                    fontSize: 9,
+                    fontWeight: 800,
+                    flexShrink: 0,
+                  }}
+                >
+                  {initials(ct.nome)}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{ct.nome}</div>
+                  {ct.cargo && <div style={{ fontSize: 11, color: "#94A3B8" }}>{ct.cargo}</div>}
+                </div>
+                <span style={{ fontSize: 11, color: "#64748B" }}>
+                  {[ct.telefone, ct.email].filter(Boolean).join(" · ")}
+                </span>
+                <button
+                  onClick={() => removeContato(ct.id)}
+                  title="Remover contato"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#CBD5E1",
+                    cursor: "pointer",
+                    padding: 2,
+                  }}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {[
+                ["nome", "Nome"],
+                ["cargo", "Cargo"],
+                ["telefone", "Telefone"],
+                ["email", "E-mail"],
+              ].map(([campo, rotulo]) => (
+                <input
+                  key={campo}
+                  value={novoContato[campo]}
+                  onChange={(e) => setNovoContato((c) => ({ ...c, [campo]: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && addContato()}
+                  placeholder={rotulo}
+                  style={{ ...inp, fontSize: 12, padding: "7px 10px", flex: 1, minWidth: 110 }}
+                />
+              ))}
+              <button
+                onClick={addContato}
+                style={{
+                  background: area.color,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "7px 13px",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                }}
+              >
+                <Plus size={13} />
+              </button>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {(cliente.tags || []).map((tag) => (
             <button

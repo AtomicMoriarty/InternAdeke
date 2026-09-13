@@ -42,6 +42,22 @@ import type {
   DashboardState,
 } from "@/lib/dashboardTypes";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
+import {
+  ehAreaComercial,
+  ETAPAS,
+  etapaDoItem,
+  mudarEtapa,
+  ehPerdido,
+  marcarPerdido,
+  reabrirNegocio,
+  valorDoItem,
+  lerValor,
+  formatarValor,
+  temperaturaDoItem,
+  TEMPERATURAS,
+  ORIGENS,
+  podeVerValores,
+} from "@/lib/comercial";
 import { trajetoriaDoItem } from "@/lib/relatorios";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
@@ -168,6 +184,11 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const [newAnexoUrl, setNewAnexoUrl] = useState("");
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [erroAnexo, setErroAnexo] = useState("");
+  // O valor fica em rascunho enquanto se digita: gravar a cada tecla
+  // transformaria "8.5" em oito reais e meio no meio da frase.
+  const [valorDraft, setValorDraft] = useState<string | null>(null);
+  const [motivoPerda, setMotivoPerda] = useState("");
+  const [pedindoMotivo, setPedindoMotivo] = useState(false);
   const arquivoRef = useRef<HTMLInputElement>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
@@ -267,6 +288,11 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
   const acompanhando = temAcompanhamento(item);
+  // Campos que so existem no Comercial: um item la e um negocio.
+  const ehNegocio = ehAreaComercial(areaId);
+  const verValores = podeVerValores(currentProfile);
+  const etapaAtual = etapaDoItem(item);
+  const negocioPerdido = ehPerdido(item);
   // Trajetória do card: por quais etapas passou e quanto tempo em cada. Um
   // status pode repetir — é justamente a ida e volta que interessa enxergar.
   const trajetoria = trajetoriaDoItem(
@@ -1285,6 +1311,163 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                       </>
                     );
                   })()}
+                </div>
+              </div>
+            )}
+
+            {ehNegocio && (
+              <div
+                style={{
+                  marginBottom: 22,
+                  padding: 14,
+                  background: negocioPerdido ? "#FEF2F2" : "#F8FAFC",
+                  border: `1px solid ${negocioPerdido ? "#FECACA" : "#E2E8F0"}`,
+                  borderRadius: 12,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 12,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: "#94A3B8",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.7,
+                    }}
+                  >
+                    Negócio
+                  </span>
+                  {negocioPerdido ? (
+                    <button
+                      onClick={() => patchItem(reabrirNegocio(item))}
+                      style={{ ...ghostBtn, color: "#0891B2" }}
+                    >
+                      Reabrir negócio
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setPedindoMotivo((v) => !v)}
+                      style={{ ...ghostBtn, color: "#DC2626" }}
+                    >
+                      Marcar como perdido
+                    </button>
+                  )}
+                </div>
+
+                {negocioPerdido && (
+                  <p style={{ fontSize: 12, color: "#B91C1C", marginBottom: 12 }}>
+                    Perdido{item.motivoPerda ? `: ${item.motivoPerda}` : " (sem motivo registrado)"}
+                  </p>
+                )}
+
+                {pedindoMotivo && !negocioPerdido && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                    <input
+                      value={motivoPerda}
+                      onChange={(e) => setMotivoPerda(e.target.value)}
+                      placeholder="Por que perdemos? (preço, prazo, concorrente...)"
+                      style={{ ...fieldStyle, flex: 1 }}
+                    />
+                    <button
+                      onClick={() => {
+                        patchItem(marcarPerdido(motivoPerda));
+                        setMotivoPerda("");
+                        setPedindoMotivo(false);
+                      }}
+                      style={primaryBtn}
+                    >
+                      Confirmar
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                  <div>
+                    <Label>Etapa</Label>
+                    <select
+                      value={etapaAtual}
+                      onChange={(e) => patchItem(mudarEtapa(item, e.target.value))}
+                      style={{ ...fieldStyle, width: 170 }}
+                    >
+                      {ETAPAS.map((et) => (
+                        <option key={et.id} value={et.id}>
+                          {et.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {verValores && (
+                    <div>
+                      <Label>Valor</Label>
+                      <input
+                        value={valorDraft ?? (valorDoItem(item) ? String(valorDoItem(item)) : "")}
+                        onChange={(e) => setValorDraft(e.target.value)}
+                        onBlur={() => {
+                          if (valorDraft !== null) patchItem({ valor: lerValor(valorDraft) });
+                          setValorDraft(null);
+                        }}
+                        placeholder="45000 ou 45k"
+                        style={{ ...fieldStyle, width: 140 }}
+                      />
+                      {valorDoItem(item) > 0 && valorDraft === null && (
+                        <div style={{ marginTop: 4, fontSize: 10, color: "#64748B" }}>
+                          {formatarValor(valorDoItem(item))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <Label>Temperatura</Label>
+                    <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+                      {TEMPERATURAS.map((t) => {
+                        const ativa = temperaturaDoItem(item) === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => patchItem({ temperatura: t.id })}
+                            style={{
+                              background: ativa ? `${t.cor}18` : "#fff",
+                              border: `1px solid ${ativa ? t.cor : "#E2E8F0"}`,
+                              color: ativa ? t.cor : "#94A3B8",
+                              borderRadius: 8,
+                              padding: "6px 11px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {t.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Origem</Label>
+                    <select
+                      value={typeof item.origem === "string" ? item.origem : ""}
+                      onChange={(e) => patchItem({ origem: e.target.value })}
+                      style={{ ...fieldStyle, width: 160 }}
+                    >
+                      <option value="">Não informada</option>
+                      {ORIGENS.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
