@@ -1,6 +1,7 @@
 // Cálculos da visão Gantt, separados da tela para poderem ser testados.
 
 import { achatarItens, parseBR, type ItemPlano } from "@/lib/relatorios";
+import type { DashboardState } from "@/lib/dashboardTypes";
 
 const DIA_MS = 86400000;
 
@@ -78,8 +79,7 @@ export function barraDoItem(item: ItemPlano, hoje: Date): BarraGantt | null {
   // Barra de um dia só fica invisível; garante largura mínima de 1 dia.
   if (termino < inicio) termino = inicio;
 
-  const atrasado =
-    !!fimValido && item.status !== "Finalizado" && meiaNoite(hoje) > fimValido;
+  const atrasado = !!fimValido && item.status !== "Finalizado" && meiaNoite(hoje) > fimValido;
 
   return { item, inicio, fim: termino, fimEstimado: estimado, atrasado };
 }
@@ -89,7 +89,11 @@ export function barraDoItem(item: ItemPlano, hoje: Date): BarraGantt | null {
  * A janela recebe uma folga de alguns dias de cada lado para as barras não
  * encostarem na borda, e sempre inclui hoje.
  */
-export function montarGantt(data: any, hoje: Date = new Date(), folgaDias = 3): DadosGantt {
+export function montarGantt(
+  data: DashboardState | null,
+  hoje: Date = new Date(),
+  folgaDias = 3,
+): DadosGantt {
   const itens = data ? achatarItens(data) : [];
   const barras: BarraGantt[] = [];
   const semDatas: ItemPlano[] = [];

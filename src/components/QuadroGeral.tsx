@@ -1,5 +1,14 @@
 import { useMemo, useState, useRef } from "react";
-import { Filter, X, Calendar, MessageSquare, GripVertical, CalendarClock, Check, CheckSquare } from "lucide-react";
+import {
+  Filter,
+  X,
+  Calendar,
+  MessageSquare,
+  GripVertical,
+  CalendarClock,
+  Check,
+  CheckSquare,
+} from "lucide-react";
 import ItemModal from "@/components/ItemModal";
 import { useDashboardState } from "@/lib/useDashboardState";
 import {
@@ -46,8 +55,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   const profiles = useProfiles();
   const currentUser = useCurrentUser();
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
-  const visibleModules =
-    allowedModules || allowedModulesFor(currentProfile);
+  const visibleModules = allowedModules || allowedModulesFor(currentProfile);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
   const [modalItem, setModalItem] = useState<{
@@ -432,11 +440,18 @@ function KanbanCard({
           {card.clienteNome}
         </span>
         {card.acompanhado && (
-          <span title="Acompanhamento semanal ligado" style={{ marginLeft: "auto", display: "inline-flex" }}>
+          <span
+            title="Acompanhamento semanal ligado"
+            style={{ marginLeft: "auto", display: "inline-flex" }}
+          >
             <CalendarClock size={12} color="#0DD3C5" />
           </span>
         )}
-        <GripVertical size={12} color="#CBD5E1" style={{ marginLeft: card.acompanhado ? 4 : "auto" }} />
+        <GripVertical
+          size={12}
+          color="#CBD5E1"
+          style={{ marginLeft: card.acompanhado ? 4 : "auto" }}
+        />
       </div>
 
       <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0F172A", lineHeight: 1.35 }}>
@@ -586,10 +601,7 @@ function FiltersBar({
       <SegmentChoice
         value={filters.modulo}
         onChange={(v) => setFilters({ modulo: v as any })}
-        options={[
-          { v: "ambos", l: "Todos" },
-          ...MODULOS.map((m) => ({ v: m, l: m })),
-        ]}
+        options={[{ v: "ambos", l: "Todos" }, ...MODULOS.map((m) => ({ v: m, l: m }))]}
       />
 
       <MultiPicker
@@ -829,9 +841,16 @@ function MultiPicker({
   );
 }
 
-
 // ─── Barra de edição em lote ─────────────────────────────────────────────────
-function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLimpar, onSair, onAcao }: {
+function BarraDeLote({
+  quantos,
+  totalVisivel,
+  profiles,
+  onSelecionarTodos,
+  onLimpar,
+  onSair,
+  onAcao,
+}: {
   quantos: number;
   totalVisivel: number;
   profiles: Profile[];
@@ -856,10 +875,21 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
       role="region"
       aria-label="Edição em lote"
       style={{
-        position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 20, zIndex: 500,
-        background: "#0F172A", color: "#fff", borderRadius: 12, padding: "10px 14px",
-        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-        boxShadow: "0 12px 40px rgba(0,0,0,0.3)", fontFamily: "Outfit, sans-serif",
+        position: "fixed",
+        left: "50%",
+        transform: "translateX(-50%)",
+        bottom: 20,
+        zIndex: 500,
+        background: "#0F172A",
+        color: "#fff",
+        borderRadius: 12,
+        padding: "10px 14px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.3)",
+        fontFamily: "Outfit, sans-serif",
         maxWidth: "calc(100vw - 32px)",
       }}
     >
@@ -867,16 +897,28 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
         {nada ? "Nenhum card selecionado" : `${quantos} selecionado${quantos !== 1 ? "s" : ""}`}
       </span>
 
-      <button onClick={onSelecionarTodos} style={btnLote} title={`Selecionar os ${totalVisivel} cards visíveis`}>
+      <button
+        onClick={onSelecionarTodos}
+        style={btnLote}
+        title={`Selecionar os ${totalVisivel} cards visíveis`}
+      >
         Todos ({totalVisivel})
       </button>
-      {!nada && <button onClick={onLimpar} style={btnLote}>Limpar</button>}
+      {!nada && (
+        <button onClick={onLimpar} style={btnLote}>
+          Limpar
+        </button>
+      )}
 
       <span style={{ width: 1, height: 20, background: "#334155" }} />
 
       {/* Status */}
       <div style={{ position: "relative" }}>
-        <button disabled={nada} onClick={() => setMenu(menu === "status" ? null : "status")} style={btnLote}>
+        <button
+          disabled={nada}
+          onClick={() => setMenu(menu === "status" ? null : "status")}
+          style={btnLote}
+        >
           Status ▾
         </button>
         {menu === "status" && (
@@ -884,10 +926,21 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
             {KANBAN_COLUMNS.map((st) => (
               <button
                 key={st}
-                onClick={() => { onAcao({ tipo: "status", status: st }); fechar(); }}
+                onClick={() => {
+                  onAcao({ tipo: "status", status: st });
+                  fechar();
+                }}
                 style={{ ...itemPop, color: COLUMN_COLORS[st] }}
               >
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: COLUMN_COLORS[st], flexShrink: 0 }} />
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: COLUMN_COLORS[st],
+                    flexShrink: 0,
+                  }}
+                />
                 {st}
               </button>
             ))}
@@ -897,7 +950,11 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
 
       {/* Membros */}
       <div style={{ position: "relative" }}>
-        <button disabled={nada} onClick={() => setMenu(menu === "membros" ? null : "membros")} style={btnLote}>
+        <button
+          disabled={nada}
+          onClick={() => setMenu(menu === "membros" ? null : "membros")}
+          style={btnLote}
+        >
           Membros ▾
         </button>
         {menu === "membros" && (
@@ -908,15 +965,32 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
                 return (
                   <button
                     key={p.id}
-                    onClick={() => setMembros((m) => (on ? m.filter((x) => x !== p.id) : [...m, p.id]))}
-                    style={{ ...itemPop, background: on ? "#F0FDFA" : "transparent", color: "#0F172A" }}
+                    onClick={() =>
+                      setMembros((m) => (on ? m.filter((x) => x !== p.id) : [...m, p.id]))
+                    }
+                    style={{
+                      ...itemPop,
+                      background: on ? "#F0FDFA" : "transparent",
+                      color: "#0F172A",
+                    }}
                   >
-                    <span style={{
-                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
-                      background: p.avatar_color || colorFor(p.id), color: "#fff",
-                      fontSize: 8, fontWeight: 800, display: "inline-flex",
-                      alignItems: "center", justifyContent: "center",
-                    }}>{initials(p.display_name)}</span>
+                    <span
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                        background: p.avatar_color || colorFor(p.id),
+                        color: "#fff",
+                        fontSize: 8,
+                        fontWeight: 800,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {initials(p.display_name)}
+                    </span>
                     {p.display_name}
                     {on && <Check size={12} color="#0DD3C5" style={{ marginLeft: "auto" }} />}
                   </button>
@@ -925,10 +999,22 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
             </div>
             {membros.length > 0 && (
               <div style={{ display: "flex", gap: 4, padding: 6, borderTop: "1px solid #F1F5F9" }}>
-                <button onClick={() => { onAcao({ tipo: "responsaveis", ids: membros, modo: "adicionar" }); fechar(); }} style={btnPop}>
+                <button
+                  onClick={() => {
+                    onAcao({ tipo: "responsaveis", ids: membros, modo: "adicionar" });
+                    fechar();
+                  }}
+                  style={btnPop}
+                >
                   Adicionar
                 </button>
-                <button onClick={() => { onAcao({ tipo: "responsaveis", ids: membros, modo: "remover" }); fechar(); }} style={btnPopSec}>
+                <button
+                  onClick={() => {
+                    onAcao({ tipo: "responsaveis", ids: membros, modo: "remover" });
+                    fechar();
+                  }}
+                  style={btnPopSec}
+                >
                   Remover
                 </button>
               </div>
@@ -939,7 +1025,11 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
 
       {/* Comentário */}
       <div style={{ position: "relative" }}>
-        <button disabled={nada} onClick={() => setMenu(menu === "comentario" ? null : "comentario")} style={btnLote}>
+        <button
+          disabled={nada}
+          onClick={() => setMenu(menu === "comentario" ? null : "comentario")}
+          style={btnLote}
+        >
           Comentar ▾
         </button>
         {menu === "comentario" && (
@@ -951,13 +1041,23 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
               placeholder="Mesmo comentário em todos os selecionados..."
               rows={3}
               style={{
-                width: "100%", border: "1px solid #E2E8F0", borderRadius: 8, padding: "7px 9px",
-                fontSize: 12, fontFamily: "inherit", resize: "vertical", outline: "none", color: "#0F172A",
+                width: "100%",
+                border: "1px solid #E2E8F0",
+                borderRadius: 8,
+                padding: "7px 9px",
+                fontSize: 12,
+                fontFamily: "inherit",
+                resize: "vertical",
+                outline: "none",
+                color: "#0F172A",
               }}
             />
             <button
               disabled={!texto.trim()}
-              onClick={() => { onAcao({ tipo: "comentario", texto, autorId: null, autorNome: "" }); fechar(); }}
+              onClick={() => {
+                onAcao({ tipo: "comentario", texto, autorId: null, autorNome: "" });
+                fechar();
+              }}
               style={{ ...btnPop, width: "100%", marginTop: 6, opacity: texto.trim() ? 1 : 0.5 }}
             >
               Comentar em {quantos}
@@ -967,13 +1067,21 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
       </div>
 
       {/* Acompanhamento */}
-      <button disabled={nada} onClick={() => onAcao({ tipo: "acompanhamento", ligado: true })} style={btnLote}
-        title="Ligar acompanhamento semanal nos selecionados">
+      <button
+        disabled={nada}
+        onClick={() => onAcao({ tipo: "acompanhamento", ligado: true })}
+        style={btnLote}
+        title="Ligar acompanhamento semanal nos selecionados"
+      >
         <CalendarClock size={12} /> Acompanhar
       </button>
 
       <span style={{ width: 1, height: 20, background: "#334155" }} />
-      <button onClick={onSair} style={{ ...btnLote, background: "transparent" }} title="Sair do modo seleção">
+      <button
+        onClick={onSair}
+        style={{ ...btnLote, background: "transparent" }}
+        title="Sair do modo seleção"
+      >
         <X size={13} />
       </button>
     </div>
@@ -981,28 +1089,69 @@ function BarraDeLote({ quantos, totalVisivel, profiles, onSelecionarTodos, onLim
 }
 
 const btnLote: any = {
-  display: "inline-flex", alignItems: "center", gap: 5,
-  background: "#1E293B", border: "1px solid #334155", borderRadius: 8,
-  color: "#fff", padding: "6px 10px", fontSize: 11, fontWeight: 700,
-  cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  background: "#1E293B",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  color: "#fff",
+  padding: "6px 10px",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
 };
 const popLote: any = {
-  position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 600,
-  background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10,
-  boxShadow: "0 12px 40px rgba(0,0,0,0.2)", minWidth: 190, overflow: "hidden",
+  position: "absolute",
+  bottom: "calc(100% + 6px)",
+  left: 0,
+  zIndex: 600,
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: 10,
+  boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
+  minWidth: 190,
+  overflow: "hidden",
 };
 const itemPop: any = {
-  display: "flex", alignItems: "center", gap: 8, width: "100%",
-  padding: "8px 12px", background: "transparent", border: "none",
-  fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  width: "100%",
+  padding: "8px 12px",
+  background: "transparent",
+  border: "none",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: "left",
 };
 const btnPop: any = {
-  background: "#0DD3C5", border: "none", borderRadius: 7, color: "#fff",
-  padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flex: 1,
+  background: "#0DD3C5",
+  border: "none",
+  borderRadius: 7,
+  color: "#fff",
+  padding: "7px 12px",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  flex: 1,
 };
 const btnPopSec: any = {
-  background: "#F1F5F9", border: "1px solid #E2E8F0", borderRadius: 7, color: "#475569",
-  padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flex: 1,
+  background: "#F1F5F9",
+  border: "1px solid #E2E8F0",
+  borderRadius: 7,
+  color: "#475569",
+  padding: "7px 12px",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  flex: 1,
 };
 
 // ─── Filter logic / prazo helpers ────────────────────────────────────────────

@@ -11,11 +11,13 @@
 //
 // Desligado por padrao. Um card so entra quando alguem liga.
 
+import type { DashboardState, Item, Comentario } from "@/lib/dashboardTypes";
+
 /** Campo do item que liga o acompanhamento. */
 export const CAMPO_ACOMPANHAMENTO = "acompanhamentoSemanal";
 
 /** O card esta marcado para acompanhamento? */
-export function temAcompanhamento(item: any): boolean {
+export function temAcompanhamento(item: Item | undefined | null): boolean {
   return item?.[CAMPO_ACOMPANHAMENTO] === true;
 }
 
@@ -40,8 +42,10 @@ function parseBR(s?: string | null): Date | null {
 }
 
 function diasEntre(a: Date, b: Date): number {
-  const x = new Date(a); x.setHours(0, 0, 0, 0);
-  const y = new Date(b); y.setHours(0, 0, 0, 0);
+  const x = new Date(a);
+  x.setHours(0, 0, 0, 0);
+  const y = new Date(b);
+  y.setHours(0, 0, 0, 0);
   return Math.round((y.getTime() - x.getTime()) / DIA_MS);
 }
 
@@ -62,12 +66,12 @@ export function chaveDaSemana(d: Date): string {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 }
 
-function statusDoItem(item: any): string {
+function statusDoItem(item: Item): string {
   return item?.kanbanStatus || item?.status || "A Fazer";
 }
 
 /** Monta o texto do acompanhamento. Devolve null quando não há o que dizer. */
-export function textoAcompanhamento(item: any, agora: Date): string | null {
+export function textoAcompanhamento(item: Item, agora: Date): string | null {
   const status = statusDoItem(item);
   if (status === "Finalizado") return null;
 
@@ -79,9 +83,11 @@ export function textoAcompanhamento(item: any, agora: Date): string | null {
     if (!isNaN(d.getTime())) {
       const dias = Math.max(0, diasEntre(d, agora));
       partes.push(
-        dias === 0 ? "mudou hoje"
-        : dias === 1 ? "há 1 dia nesta etapa"
-        : `há ${dias} dias nesta etapa`,
+        dias === 0
+          ? "mudou hoje"
+          : dias === 1
+            ? "há 1 dia nesta etapa"
+            : `há ${dias} dias nesta etapa`,
       );
     }
   }
@@ -90,23 +96,25 @@ export function textoAcompanhamento(item: any, agora: Date): string | null {
   if (prazo) {
     const dias = diasEntre(agora, prazo);
     partes.push(
-      dias < 0 ? `prazo vencido há ${Math.abs(dias)} dia${Math.abs(dias) !== 1 ? "s" : ""}`
-      : dias === 0 ? "prazo vence hoje"
-      : `prazo em ${dias} dia${dias !== 1 ? "s" : ""}`,
+      dias < 0
+        ? `prazo vencido há ${Math.abs(dias)} dia${Math.abs(dias) !== 1 ? "s" : ""}`
+        : dias === 0
+          ? "prazo vence hoje"
+          : `prazo em ${dias} dia${dias !== 1 ? "s" : ""}`,
     );
   }
 
   const checklist = Array.isArray(item.checklist) ? item.checklist : [];
   if (checklist.length) {
-    partes.push(`checklist ${checklist.filter((c: any) => c.done).length}/${checklist.length}`);
+    partes.push(`checklist ${checklist.filter((c) => c.done).length}/${checklist.length}`);
   }
 
   return `Acompanhamento semanal — ${partes.join(" · ")}`;
 }
 
 /** Já existe acompanhamento desta semana neste item? */
-function jaTemDaSemana(item: any, semana: string): boolean {
-  return (item.comentarios || []).some((c: any) => c?.semanaAcompanhamento === semana);
+function jaTemDaSemana(item: Item, semana: string): boolean {
+  return (item.comentarios || []).some((c) => c?.semanaAcompanhamento === semana);
 }
 
 /**
@@ -114,10 +122,10 @@ function jaTemDaSemana(item: any, semana: string): boolean {
  * todos os comentarios escritos por pessoas.
  */
 export function podarAcompanhamentos(
-  comentarios: any[],
+  comentarios: Comentario[],
   max: number = MAX_ACOMPANHAMENTOS_POR_ITEM,
-): any[] {
-  const ehAcompanhamento = (c: any) => !!c?.semanaAcompanhamento;
+): Comentario[] {
+  const ehAcompanhamento = (c: Comentario) => !!c?.semanaAcompanhamento;
   const automaticos = comentarios.filter(ehAcompanhamento);
   if (automaticos.length <= max) return comentarios;
 
@@ -132,7 +140,7 @@ export function podarAcompanhamentos(
 }
 
 export type ResultadoAcompanhamento = {
-  data: any;
+  data: DashboardState;
   comentariosCriados: number;
   itensVisitados: number; // cards com acompanhamento ligado
   semana: string;
@@ -145,7 +153,7 @@ export type ResultadoAcompanhamento = {
  * que o cron dispare mais de uma vez ou que alguém rode manualmente.
  */
 export function aplicarAcompanhamentoSemanal(
-  data: any,
+  data: DashboardState,
   agora: Date = new Date(),
 ): ResultadoAcompanhamento {
   const semana = chaveDaSemana(agora);
@@ -156,14 +164,14 @@ export function aplicarAcompanhamentoSemanal(
     return { data, comentariosCriados: 0, itensVisitados: 0, semana };
   }
 
-  const novasAreas = data.areas.map((area: any) => {
+  const novasAreas = (data.areas || []).map((area) => {
     return {
       ...area,
-      clientes: (area.clientes || []).map((cliente: any) => ({
+      clientes: (area.clientes || []).map((cliente) => ({
         ...cliente,
-        planos: (cliente.planos || []).map((plano: any) => ({
+        planos: (cliente.planos || []).map((plano) => ({
           ...plano,
-          items: (plano.items || []).map((item: any) => {
+          items: (plano.items || []).map((item) => {
             if (!temAcompanhamento(item)) return item;
             visitados++;
             if (jaTemDaSemana(item, semana)) return item;

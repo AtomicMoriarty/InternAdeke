@@ -49,7 +49,7 @@ export const MODULO_COLOR: Record<string, string> = {
   Compliance: "#8B5CF6",
   Produtos: "#10B981",
   INPI: "#F59E0B",
-  "Societário": "#6366F1",
+  Societário: "#6366F1",
   Comercial: "#EC4899",
 };
 

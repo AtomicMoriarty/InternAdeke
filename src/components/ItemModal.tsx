@@ -28,7 +28,13 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import { moduloOf } from "@/lib/areas";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
-import { enviarAnexo, linkTemporario, apagarAnexo, formatarTamanho, TAMANHO_MAXIMO } from "@/lib/anexos";
+import {
+  enviarAnexo,
+  linkTemporario,
+  apagarAnexo,
+  formatarTamanho,
+  TAMANHO_MAXIMO,
+} from "@/lib/anexos";
 
 const KANBAN_COLUMNS = [
   "A Fazer",
@@ -1097,12 +1103,18 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                       onClick={() => arquivoRef.current?.click()}
                       disabled={enviandoAnexo}
                       style={{
-                        display: "inline-flex", alignItems: "center", gap: 6,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
                         background: enviandoAnexo ? "#F1F5F9" : "#0DD3C5",
                         color: enviandoAnexo ? "#94A3B8" : "#fff",
-                        border: "none", borderRadius: 8, padding: "8px 14px",
-                        fontSize: 12, fontWeight: 700,
-                        cursor: enviandoAnexo ? "default" : "pointer", fontFamily: "inherit",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: enviandoAnexo ? "default" : "pointer",
+                        fontFamily: "inherit",
                       }}
                     >
                       <Paperclip size={13} />
@@ -1113,14 +1125,32 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                     </span>
 
                     {erroAnexo && (
-                      <div style={{
-                        marginTop: 8, padding: "7px 10px", borderRadius: 8,
-                        background: "#FEF2F2", border: "1px solid #FECACA",
-                        color: "#DC2626", fontSize: 11.5, fontWeight: 600,
-                      }}>{erroAnexo}</div>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          padding: "7px 10px",
+                          borderRadius: 8,
+                          background: "#FEF2F2",
+                          border: "1px solid #FECACA",
+                          color: "#DC2626",
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {erroAnexo}
+                      </div>
                     )}
 
-                    <div style={{ fontSize: 10, color: "#CBD5E1", margin: "12px 0 6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#CBD5E1",
+                        margin: "12px 0 6px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.6,
+                      }}
+                    >
                       ou cole um link
                     </div>
                   </div>

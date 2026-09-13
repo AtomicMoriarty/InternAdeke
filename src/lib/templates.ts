@@ -8,6 +8,7 @@
 // prática muda, sem depender de uma publicação.
 
 import { AREAS, DEMANDAS_POR_AREA, checklistTemplateFor } from "@/lib/areas";
+import type { DashboardState, Item } from "@/lib/dashboardTypes";
 
 export type ItemChecklistTemplate = { text: string };
 
@@ -28,8 +29,17 @@ export type TemplateCard = {
 };
 
 export const TIPOS_PADRAO = [
-  "Organograma", "Política", "Procedimento", "Processo", "Treinamento",
-  "Relatório", "Auditoria", "Documento", "Petição", "Contrato", "Outro",
+  "Organograma",
+  "Política",
+  "Procedimento",
+  "Processo",
+  "Treinamento",
+  "Relatório",
+  "Auditoria",
+  "Documento",
+  "Petição",
+  "Contrato",
+  "Outro",
 ];
 
 function uid() {
@@ -61,7 +71,10 @@ export function templatesIniciais(): TemplateCard[] {
     for (const demanda of DEMANDAS_POR_AREA[area.id] || []) {
       out.push({
         ...templateVazio(area.id),
-        id: `tpl_${area.id}_${demanda.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`,
+        id: `tpl_${area.id}_${demanda
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_|_$/g, "")}`,
         nome: demanda,
         checklist: checklistTemplateFor(demanda),
       });
@@ -76,14 +89,14 @@ export function templatesIniciais(): TemplateCard[] {
  * Só semeia quando o campo não existe. Depois disso o banco é a verdade — se
  * alguém apagar um template, ele não volta na próxima abertura.
  */
-export function ensureTemplates(data: any): any {
+export function ensureTemplates(data: DashboardState): DashboardState {
   if (!data) return data;
   if (Array.isArray(data.templates)) return data;
   return { ...data, templates: templatesIniciais() };
 }
 
 /** Templates que valem num quadro: os dele mais os globais. */
-export function templatesDaArea(data: any, areaId: string): TemplateCard[] {
+export function templatesDaArea(data: DashboardState | null, areaId: string): TemplateCard[] {
   const todos: TemplateCard[] = Array.isArray(data?.templates) ? data.templates : [];
   return todos
     .filter((t) => !t.areaId || t.areaId === areaId)
@@ -107,11 +120,13 @@ export type ContextoCriacao = {
  * automação de "quem cria é responsável" continua valendo mesmo quando o
  * template já traz gente.
  */
-export function aplicarTemplate(tpl: TemplateCard, ctx: ContextoCriacao): any {
+export function aplicarTemplate(tpl: TemplateCard, ctx: ContextoCriacao): Item {
   const agora = ctx.agora || new Date();
   const iso = agora.toISOString();
 
-  const responsaveis = [...new Set([...(tpl.responsaveis || []), ...(ctx.criadorId ? [ctx.criadorId] : [])])];
+  const responsaveis = [
+    ...new Set([...(tpl.responsaveis || []), ...(ctx.criadorId ? [ctx.criadorId] : [])]),
+  ];
 
   let prazo = "";
   if (typeof tpl.prazoDias === "number" && tpl.prazoDias >= 0) {
@@ -137,7 +152,11 @@ export function aplicarTemplate(tpl: TemplateCard, ctx: ContextoCriacao): any {
     checklist: (tpl.checklist || [])
       .filter((t) => t && t.trim())
       .map((t) => ({ id: `ck${uid()}`, text: t.trim(), done: false })),
-    etiquetas: (tpl.etiquetas || []).map((e) => ({ id: `et${uid()}`, label: e.label, color: e.color })),
+    etiquetas: (tpl.etiquetas || []).map((e) => ({
+      id: `et${uid()}`,
+      label: e.label,
+      color: e.color,
+    })),
     ...(tpl.acompanhamentoSemanal ? { acompanhamentoSemanal: true } : {}),
     templateId: tpl.id,
   };
@@ -157,6 +176,6 @@ export function resumirTemplate(tpl: TemplateCard): string {
 }
 
 /** Grava a lista de templates no estado. */
-export function salvarTemplates(data: any, templates: TemplateCard[]): any {
+export function salvarTemplates(data: DashboardState, templates: TemplateCard[]): DashboardState {
   return { ...data, templates };
 }

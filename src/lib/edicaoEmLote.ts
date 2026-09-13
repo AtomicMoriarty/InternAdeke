@@ -6,6 +6,7 @@
 // caminho de cada um na hora de gravar.
 
 import type { FlatCard, KanbanStatus } from "@/lib/flattenItems";
+import type { DashboardState, Item } from "@/lib/dashboardTypes";
 
 export const PRODUTOS_AREA_ID = "produtos";
 
@@ -23,7 +24,7 @@ export type AcaoEmLote =
   | { tipo: "acompanhamento"; ligado: boolean };
 
 /** Aplica a ação a um item. Devolve o mesmo objeto quando não há mudança. */
-function aplicarNoItem(item: any, acao: AcaoEmLote, agora: Date): any {
+function aplicarNoItem(item: Item, acao: AcaoEmLote, agora: Date): Item {
   switch (acao.tipo) {
     case "status": {
       const atual = item.kanbanStatus || item.status || "A Fazer";
@@ -86,7 +87,7 @@ function aplicarNoItem(item: any, acao: AcaoEmLote, agora: Date): any {
 }
 
 export type ResultadoLote = {
-  data: any;
+  data: DashboardState;
   alterados: number;
 };
 
@@ -97,7 +98,7 @@ export type ResultadoLote = {
  * cards selecionados a diferença aparece.
  */
 export function aplicarEmLote(
-  data: any,
+  data: DashboardState,
   selecionados: FlatCard[],
   acao: AcaoEmLote,
   agora: Date = new Date(),
@@ -108,25 +109,25 @@ export function aplicarEmLote(
   const alvo = new Set(selecionados.map((c) => c.itemId));
   let alterados = 0;
 
-  const mapear = (item: any) => {
+  const mapear = (item: Item) => {
     if (!alvo.has(item.id)) return item;
     const novo = aplicarNoItem(item, acao, agora);
     if (novo !== item) alterados++;
     return novo;
   };
 
-  const areas = (data.areas || []).map((a: any) => ({
+  const areas = (data.areas || []).map((a) => ({
     ...a,
-    clientes: (a.clientes || []).map((c: any) => ({
+    clientes: (a.clientes || []).map((c) => ({
       ...c,
-      planos: (c.planos || []).map((p: any) => ({
+      planos: (c.planos || []).map((p) => ({
         ...p,
         items: (p.items || []).map(mapear),
       })),
     })),
   }));
 
-  const produtos = (data.produtos || []).map((p: any) => ({
+  const produtos = (data.produtos || []).map((p) => ({
     ...p,
     items: (p.items || []).map(mapear),
   }));

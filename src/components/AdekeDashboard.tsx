@@ -41,11 +41,18 @@ import Relatorios from "@/components/Relatorios";
 import Gantt from "@/components/Gantt";
 import TemplatesModal from "@/components/TemplatesModal";
 import {
-  ensureTemplates, templatesDaArea, aplicarTemplate, resumirTemplate,
+  ensureTemplates,
+  templatesDaArea,
+  aplicarTemplate,
+  resumirTemplate,
 } from "@/lib/templates";
 import {
-  AREAS, AREA_IDS, ALL_MODULES, allowedModulesFor,
-  moduloOf as moduloOfArea, checklistTemplateFor,
+  AREAS,
+  AREA_IDS,
+  ALL_MODULES,
+  allowedModulesFor,
+  moduloOf as moduloOfArea,
+  checklistTemplateFor,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
@@ -420,9 +427,30 @@ const INIT = {
       dpo: "",
       clientes: [],
     },
-    { id: "inpi", name: "INPI & Marcas", color: "#F59E0B", responsavel: "", responsaveis: [], clientes: [] },
-    { id: "societario", name: "Societário", color: "#8B5CF6", responsavel: "", responsaveis: [], clientes: [] },
-    { id: "comercial", name: "Comercial", color: "#EC4899", responsavel: "", responsaveis: [], clientes: [] },
+    {
+      id: "inpi",
+      name: "INPI & Marcas",
+      color: "#F59E0B",
+      responsavel: "",
+      responsaveis: [],
+      clientes: [],
+    },
+    {
+      id: "societario",
+      name: "Societário",
+      color: "#8B5CF6",
+      responsavel: "",
+      responsaveis: [],
+      clientes: [],
+    },
+    {
+      id: "comercial",
+      name: "Comercial",
+      color: "#EC4899",
+      responsavel: "",
+      responsaveis: [],
+      clientes: [],
+    },
   ],
   produtos: [
     {
@@ -704,8 +732,11 @@ function ensureAreas(data) {
   if (!data || !Array.isArray(data.areas)) return data;
   const existentes = new Set(data.areas.map((a) => a.id));
   const faltando = AREAS.filter((a) => !existentes.has(a.id)).map((a) => ({
-    id: a.id, name: a.name, color: a.color,
-    responsavel: "", responsaveis: [],
+    id: a.id,
+    name: a.name,
+    color: a.color,
+    responsavel: "",
+    responsaveis: [],
     ...(a.id === "lgpd" ? { dpo: "" } : {}),
     clientes: [],
   }));
@@ -725,7 +756,10 @@ const TEMPLATES = {
   ],
   societario: [
     { name: "Dados da empresa", items: ["Contato", "Dados da empresa", "Quadro societário"] },
-    { name: "Documentos societários", items: ["Contrato social vigente", "Última alteração", "Certidão simplificada"] },
+    {
+      name: "Documentos societários",
+      items: ["Contrato social vigente", "Última alteração", "Certidão simplificada"],
+    },
     { name: "Demandas em andamento", items: [] },
   ],
   comercial: [
@@ -3124,10 +3158,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   const [dragOverItemId, setDragOverItemId] = useState(null);
   const [modalItemId, setModalItemId] = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
-  const templatesDisponiveis = useMemo(
-    () => templatesDaArea(data, areaId),
-    [data, areaId],
-  );
+  const templatesDisponiveis = useMemo(() => templatesDaArea(data, areaId), [data, areaId]);
 
   /** Cria o card já preenchido pelo template, sem passar pelo formulário. */
   function criarPorTemplate(tpl) {
@@ -3242,7 +3273,11 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
       criadoEm: agora,
       statusChangedAt: agora,
       // demandas conhecidas ja trazem a checklist pronta
-      checklist: checklistTemplateFor(nome).map((t) => ({ id: `ck${uid()}`, text: t, done: false })),
+      checklist: checklistTemplateFor(nome).map((t) => ({
+        id: `ck${uid()}`,
+        text: t,
+        done: false,
+      })),
     };
     setPlanos((planos) => updateItemsAndResort(planos, planoId, (items) => [...items, item]));
     setNewName("");
@@ -3454,8 +3489,25 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
 
           {/* Templates: um clique cria o card com tipo, responsaveis, prazo e
               checklist ja preenchidos. Editaveis pelo botao ao lado. */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10, alignItems: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.6, marginRight: 2 }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 5,
+              marginBottom: 10,
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#94A3B8",
+                textTransform: "uppercase",
+                letterSpacing: 0.6,
+                marginRight: 2,
+              }}
+            >
               Templates
             </span>
             {templatesDisponiveis.map((tpl) => (
@@ -3464,9 +3516,15 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
                 onClick={() => criarPorTemplate(tpl)}
                 title={resumirTemplate(tpl) || "Criar card a partir deste template"}
                 style={{
-                  padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                  background: "#F8FAFC", border: `1px solid ${area.color}40`, color: area.color,
-                  cursor: "pointer", fontFamily: "inherit",
+                  padding: "4px 10px",
+                  borderRadius: 20,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: "#F8FAFC",
+                  border: `1px solid ${area.color}40`,
+                  color: area.color,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
                 }}
               >
                 {tpl.nome}
@@ -3476,9 +3534,15 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
               onClick={() => setNomeDoCliente()}
               title="Usar o nome do cliente como nome do item"
               style={{
-                padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                background: "#F1F5F9", border: "1px dashed #CBD5E1", color: "#475569",
-                cursor: "pointer", fontFamily: "inherit",
+                padding: "4px 10px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 700,
+                background: "#F1F5F9",
+                border: "1px dashed #CBD5E1",
+                color: "#475569",
+                cursor: "pointer",
+                fontFamily: "inherit",
               }}
             >
               + nome do cliente
@@ -3487,9 +3551,18 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
               onClick={() => setShowTemplates(true)}
               title="Criar, editar ou apagar templates"
               style={{
-                padding: "4px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                background: "transparent", border: "1px solid #E2E8F0", color: "#94A3B8",
-                cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "4px 9px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 700,
+                background: "transparent",
+                border: "1px solid #E2E8F0",
+                color: "#94A3B8",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
               }}
             >
               <Settings2 size={11} /> Gerenciar
@@ -5438,9 +5511,27 @@ const NAV = [
     color: "#10B981",
     view: { page: "area", areaId: "lgpd" },
   },
-  { id: "inpi", label: "INPI & Marcas", Icon: Stamp, color: "#F59E0B", view: { page: "area", areaId: "inpi" } },
-  { id: "societario", label: "Societário", Icon: Scale, color: "#8B5CF6", view: { page: "area", areaId: "societario" } },
-  { id: "comercial", label: "Comercial", Icon: Handshake, color: "#EC4899", view: { page: "area", areaId: "comercial" } },
+  {
+    id: "inpi",
+    label: "INPI & Marcas",
+    Icon: Stamp,
+    color: "#F59E0B",
+    view: { page: "area", areaId: "inpi" },
+  },
+  {
+    id: "societario",
+    label: "Societário",
+    Icon: Scale,
+    color: "#8B5CF6",
+    view: { page: "area", areaId: "societario" },
+  },
+  {
+    id: "comercial",
+    label: "Comercial",
+    Icon: Handshake,
+    color: "#EC4899",
+    view: { page: "area", areaId: "comercial" },
+  },
   {
     id: "produtos",
     label: "Produtos & Soluções",
@@ -5456,9 +5547,6 @@ function navActiveId(view) {
   if (view.page === "produtos" || view.page === "produto") return "produtos";
   return "";
 }
-
-
-
 
 function canAccessView(view, allowedModules) {
   if (view.page === "dashboard") return true;
@@ -5804,14 +5892,20 @@ export default function App() {
                 <button
                   onClick={() => setDashTab("relatorios")}
                   style={{
-                    display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "9px 16px",
                     border: "none",
-                    borderBottom: dashTab === "relatorios" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    borderBottom:
+                      dashTab === "relatorios" ? "2px solid #0DD3C5" : "2px solid transparent",
                     background: "transparent",
                     color: dashTab === "relatorios" ? "#0DD3C5" : "#64748B",
                     fontSize: 13,
                     fontWeight: dashTab === "relatorios" ? 700 : 500,
-                    cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
                   }}
                 >
                   <BarChart3 size={14} /> Relatórios
@@ -5819,14 +5913,20 @@ export default function App() {
                 <button
                   onClick={() => setDashTab("gantt")}
                   style={{
-                    display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "9px 16px",
                     border: "none",
-                    borderBottom: dashTab === "gantt" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    borderBottom:
+                      dashTab === "gantt" ? "2px solid #0DD3C5" : "2px solid transparent",
                     background: "transparent",
                     color: dashTab === "gantt" ? "#0DD3C5" : "#64748B",
                     fontSize: 13,
                     fontWeight: dashTab === "gantt" ? 700 : 500,
-                    cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
                   }}
                 >
                   <CalendarRange size={14} /> Linha do tempo

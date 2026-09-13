@@ -381,9 +381,9 @@ function EuPage() {
                     }}
                   >
                     {MODULOS_SELECIONAVEIS.map(([id, label]) => {
-                      const allowed = (
-                        profile.allowed_modules || DEFAULT_ALLOWED_MODULES
-                      ).includes(id);
+                      const allowed = (profile.allowed_modules || DEFAULT_ALLOWED_MODULES).includes(
+                        id,
+                      );
                       return (
                         <button
                           key={id}
