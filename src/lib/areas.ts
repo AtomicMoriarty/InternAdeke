@@ -114,3 +114,29 @@ export const CHECKLIST_POR_DEMANDA: Record<string, string[]> = {
 export function checklistTemplateFor(demanda: string): string[] {
   return CHECKLIST_POR_DEMANDA[demanda] || [];
 }
+
+// ─── Modulos visiveis por pessoa ─────────────────────────────────────────────
+
+/** Tudo que pode ser liberado: as areas mais o pseudo-modulo Produtos. */
+export const ALL_MODULES = [...AREA_IDS, "produtos"];
+
+/**
+ * Conjunto que significava "acesso total" antes de INPI, Societario e Comercial
+ * existirem. Perfis salvos naquela epoca tem exatamente estes tres.
+ */
+const MODULOS_LEGADOS = ["compliance", "lgpd", "produtos"];
+
+/**
+ * Quais quadros a pessoa enxerga.
+ *
+ * Quem tinha acesso total continua tendo quando um quadro novo nasce. Sem isso,
+ * criar uma area a esconde de todo mundo ate alguem editar perfil por perfil —
+ * e o sintoma engana: a barra lateral mostra o quadro por um instante, enquanto
+ * o perfil ainda nao carregou, e depois o esconde.
+ */
+export function allowedModulesFor(profile: any): string[] {
+  const salvos = profile?.allowed_modules;
+  if (!Array.isArray(salvos) || !salvos.length) return ALL_MODULES;
+  if (MODULOS_LEGADOS.every((m) => salvos.includes(m))) return ALL_MODULES;
+  return salvos;
+}

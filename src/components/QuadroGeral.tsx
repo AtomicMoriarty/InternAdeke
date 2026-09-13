@@ -14,10 +14,10 @@ import {
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
 import { useCurrentUser } from "@/lib/useCurrentUser";
-import { AREA_IDS } from "@/lib/areas";
+import { MODULOS, ALL_MODULES, allowedModulesFor } from "@/lib/areas";
 
 type Filters = {
-  modulo: "LGPD" | "Compliance" | "Produtos" | "ambos";
+  modulo: string; // rotulo do modulo, ou "ambos" para todos
   clientes: string[];
   planos: string[];
   responsaveis: string[];
@@ -40,17 +40,13 @@ type Props = {
   allowedModules?: string[];
 };
 
-// Derivado do registro de areas: um quadro novo entra aqui sozinho.
-const ALL_MODULES = [...AREA_IDS, "produtos"];
-
 export default function QuadroGeral({ filters, setFilters, allowedModules }: Props) {
   const { data, loaded, update } = useDashboardState("quadro");
   const profiles = useProfiles();
   const currentUser = useCurrentUser();
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
   const visibleModules =
-    allowedModules ||
-    (Array.isArray(currentProfile?.allowed_modules) ? currentProfile.allowed_modules : ALL_MODULES);
+    allowedModules || allowedModulesFor(currentProfile);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
   const [modalItem, setModalItem] = useState<{
@@ -504,10 +500,8 @@ function FiltersBar({
         value={filters.modulo}
         onChange={(v) => setFilters({ modulo: v as any })}
         options={[
-          { v: "ambos", l: "Ambos" },
-          { v: "LGPD", l: "LGPD" },
-          { v: "Compliance", l: "Compliance" },
-          { v: "Produtos", l: "Produtos" },
+          { v: "ambos", l: "Todos" },
+          ...MODULOS.map((m) => ({ v: m, l: m })),
         ]}
       />
 

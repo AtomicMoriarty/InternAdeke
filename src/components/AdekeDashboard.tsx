@@ -37,7 +37,8 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
 import {
-  AREAS, AREA_IDS, moduloOf as moduloOfArea, DEMANDAS_POR_AREA, checklistTemplateFor,
+  AREAS, AREA_IDS, ALL_MODULES, allowedModulesFor,
+  moduloOf as moduloOfArea, DEMANDAS_POR_AREA, checklistTemplateFor,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
@@ -5379,14 +5380,8 @@ function navActiveId(view) {
   return "";
 }
 
-// Derivado do registro de areas: um quadro novo entra aqui sozinho.
-const ALL_MODULES = [...AREA_IDS, "produtos"];
 
-function allowedModulesFor(profile) {
-  return Array.isArray(profile?.allowed_modules) && profile.allowed_modules.length
-    ? profile.allowed_modules
-    : ALL_MODULES;
-}
+
 
 function canAccessView(view, allowedModules) {
   if (view.page === "dashboard") return true;
