@@ -26,6 +26,7 @@ import {
   Edit3,
   ArrowUp,
   ArrowDown,
+  CalendarRange,
   MessageSquare,
   LayoutDashboard,
   Stamp,
@@ -36,6 +37,7 @@ import {
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
+import Gantt from "@/components/Gantt";
 import {
   AREAS, AREA_IDS, ALL_MODULES, allowedModulesFor,
   moduloOf as moduloOfArea, DEMANDAS_POR_AREA, checklistTemplateFor,
@@ -5739,6 +5741,21 @@ export default function App() {
                 >
                   <BarChart3 size={14} /> Relatórios
                 </button>
+                <button
+                  onClick={() => setDashTab("gantt")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+                    border: "none",
+                    borderBottom: dashTab === "gantt" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    background: "transparent",
+                    color: dashTab === "gantt" ? "#0DD3C5" : "#64748B",
+                    fontSize: 13,
+                    fontWeight: dashTab === "gantt" ? 700 : 500,
+                    cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+                  }}
+                >
+                  <CalendarRange size={14} /> Linha do tempo
+                </button>
               </div>
               {dashTab === "painel" && (
                 <div style={{ padding: "40px 44px" }}>
@@ -5758,6 +5775,7 @@ export default function App() {
                 />
               )}
               {dashTab === "relatorios" && <Relatorios />}
+              {dashTab === "gantt" && <Gantt />}
             </div>
           )}
           {view.page !== "dashboard" && (
