@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { CSSProperties } from "react";
 import {
   X,
   Check,
@@ -27,6 +28,18 @@ import {
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import { moduloOf } from "@/lib/areas";
+import type {
+  Area,
+  Cliente,
+  Plano,
+  Item,
+  Produto,
+  Comentario,
+  ItemChecklist,
+  Etiqueta,
+  Anexo,
+  DashboardState,
+} from "@/lib/dashboardTypes";
 import { temAcompanhamento } from "@/lib/acompanhamentoSemanal";
 import {
   enviarAnexo,
@@ -229,30 +242,30 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   // Um produto guarda seus itens num nivel so, entao faz papel de cliente e de
   // plano ao mesmo tempo.
   const ehProduto = areaId === PRODUTOS_AREA_ID;
-  const produto = ehProduto ? data.produtos?.find((p: any) => p.id === clienteId) : null;
+  const produto = ehProduto ? data.produtos?.find((p: Produto) => p.id === clienteId) : null;
 
   const area = ehProduto
     ? { id: PRODUTOS_AREA_ID, name: MODULO_PRODUTOS }
-    : data.areas?.find((a: any) => a.id === areaId);
-  const cliente = ehProduto ? produto : area?.clientes?.find((c: any) => c.id === clienteId);
-  const plano = ehProduto ? produto : cliente?.planos?.find((p: any) => p.id === planoId);
+    : data.areas?.find((a: Area) => a.id === areaId);
+  const cliente = ehProduto ? produto : area?.clientes?.find((c: Cliente) => c.id === clienteId);
+  const plano = ehProduto ? produto : cliente?.planos?.find((p: Plano) => p.id === planoId);
   const item = ehProduto
-    ? produto?.items?.find((it: any) => it.id === itemId)
-    : plano?.items?.find((it: any) => it.id === itemId);
+    ? produto?.items?.find((it: Item) => it.id === itemId)
+    : plano?.items?.find((it: Item) => it.id === itemId);
 
   if (!item || !plano || !cliente || !area) return null;
 
   const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
   const kanbanStatus: KanbanStatus = item.kanbanStatus || "A Fazer";
   const statusColor = STATUS_COLORS[kanbanStatus] || "#64748B";
-  const checklist: any[] = item.checklist || [];
+  const checklist: ItemChecklist[] = item.checklist || [];
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
   const acompanhando = temAcompanhamento(item);
-  const allActivity: any[] = (item.comentarios || [])
+  const allActivity: Comentario[] = (item.comentarios || [])
     .slice()
-    .sort((a: any, b: any) => (a.created_at || "").localeCompare(b.created_at || ""));
+    .sort((a: Comentario, b: Comentario) => (a.created_at || "").localeCompare(b.created_at || ""));
 
   const ctx: NotifContext = {
     cliente_id: clienteId,
@@ -267,16 +280,16 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     trecho: "",
   };
 
-  function patchItem(patch: any) {
+  function patchItem(patch: Partial<Item>) {
     if (ehProduto) {
-      update((prev: any) => ({
+      update((prev: DashboardState) => ({
         ...prev,
-        produtos: (prev.produtos || []).map((p: any) =>
+        produtos: (prev.produtos || []).map((p: Produto) =>
           p.id !== clienteId
             ? p
             : {
                 ...p,
-                items: (p.items || []).map((it: any) =>
+                items: (p.items || []).map((it: Item) =>
                   it.id !== itemId ? it : { ...it, ...patch },
                 ),
               },
@@ -284,24 +297,24 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
       }));
       return;
     }
-    update((prev: any) => ({
+    update((prev: DashboardState) => ({
       ...prev,
-      areas: prev.areas.map((a: any) =>
+      areas: prev.areas.map((a: Area) =>
         a.id !== areaId
           ? a
           : {
               ...a,
-              clientes: a.clientes.map((c: any) =>
+              clientes: a.clientes.map((c: Cliente) =>
                 c.id !== clienteId
                   ? c
                   : {
                       ...c,
-                      planos: c.planos.map((p: any) =>
+                      planos: c.planos.map((p: Plano) =>
                         p.id !== planoId
                           ? p
                           : {
                               ...p,
-                              items: p.items.map((it: any) =>
+                              items: (p.items || []).map((it: Item) =>
                                 it.id !== itemId ? it : { ...it, ...patch },
                               ),
                             },
@@ -370,7 +383,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     }
   }
 
-  function startEditComment(comment: any) {
+  function startEditComment(comment: Comentario) {
     setEditingCommentId(comment.id);
     setEditingCommentText(comment.text || "");
   }
@@ -379,7 +392,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     const txt = editingCommentText.trim();
     if (!editingCommentId || !txt) return;
     patchItem({
-      comentarios: (item.comentarios || []).map((c: any) =>
+      comentarios: (item.comentarios || []).map((c: Comentario) =>
         c.id === editingCommentId ? { ...c, text: txt, updated_at: new Date().toISOString() } : c,
       ),
     });
@@ -388,7 +401,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   function deleteComment(id: string) {
-    patchItem({ comentarios: (item.comentarios || []).filter((c: any) => c.id !== id) });
+    patchItem({ comentarios: (item.comentarios || []).filter((c: Comentario) => c.id !== id) });
   }
 
   function addAnexo() {
@@ -442,7 +455,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   /** O arquivo e privado: abre por link assinado, gerado na hora. */
-  async function abrirAnexo(anexo: any) {
+  async function abrirAnexo(anexo: Anexo) {
     if (!anexo.caminho) {
       if (anexo.url) window.open(anexo.url, "_blank", "noreferrer");
       return;
@@ -453,11 +466,11 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   async function removeAnexo(id: string) {
-    const anexo = (item.anexos || []).find((a: any) => a.id === id);
+    const anexo = (item.anexos || []).find((a: Anexo) => a.id === id);
     // Tira da lista mesmo que o storage falhe: ficar preso na tela e pior que
     // um arquivo orfao no bucket.
     if (anexo?.caminho) await apagarAnexo(anexo.caminho);
-    patchItem({ anexos: (item.anexos || []).filter((a: any) => a.id !== id) });
+    patchItem({ anexos: (item.anexos || []).filter((a: Anexo) => a.id !== id) });
   }
 
   function addCheckItem() {
@@ -490,7 +503,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   function removeEtiqueta(id: string) {
-    patchItem({ etiquetas: (item.etiquetas || []).filter((e: any) => e.id !== id) });
+    patchItem({ etiquetas: (item.etiquetas || []).filter((e: Etiqueta) => e.id !== id) });
   }
 
   return (
@@ -917,7 +930,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   marginTop: 6,
                 }}
               >
-                {(item.etiquetas || []).map((et: any) => (
+                {(item.etiquetas || []).map((et: Etiqueta) => (
                   <span
                     key={et.id}
                     style={{
@@ -1033,7 +1046,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                 <Label>Anexos</Label>
                 {(item.anexos || []).length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-                    {(item.anexos || []).map((anexo: any) => (
+                    {(item.anexos || []).map((anexo: Anexo) => (
                       <div
                         key={anexo.id}
                         style={{
@@ -1229,7 +1242,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   </div>
                 )}
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
-                  {checklist.map((ck: any) => (
+                  {checklist.map((ck: ItemChecklist) => (
                     <div
                       key={ck.id}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}
@@ -1255,7 +1268,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                         value={ck.text}
                         onChange={(e) =>
                           patchItem({
-                            checklist: checklist.map((c: any) =>
+                            checklist: checklist.map((c: ItemChecklist) =>
                               c.id !== ck.id ? c : { ...c, text: e.target.value },
                             ),
                           })
@@ -1382,7 +1395,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                   Sem atividade ainda.
                 </p>
               )}
-              {allActivity.map((c: any) => {
+              {allActivity.map((c: Comentario) => {
                 const p = profiles.find((x) => x.id === c.autor_id);
                 const avatarColor = p ? p.avatar_color || colorFor(p.id) : "#64748B";
                 const name = c.autor_nome || "Usuário";
@@ -1571,7 +1584,7 @@ function QuickAddButton({
   );
 }
 
-const iconBtn: any = {
+const iconBtn: CSSProperties = {
   background: "none",
   border: "none",
   cursor: "pointer",
@@ -1580,7 +1593,7 @@ const iconBtn: any = {
   display: "flex",
   alignItems: "center",
 };
-const floatingMenuStyle: any = {
+const floatingMenuStyle: CSSProperties = {
   position: "absolute",
   top: "calc(100% + 6px)",
   left: 0,
@@ -1592,7 +1605,7 @@ const floatingMenuStyle: any = {
   boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
   padding: 4,
 };
-const miniTextBtn: any = {
+const miniTextBtn: CSSProperties = {
   background: "transparent",
   border: "none",
   color: "#94A3B8",
@@ -1601,7 +1614,7 @@ const miniTextBtn: any = {
   display: "inline-flex",
   alignItems: "center",
 };
-const fieldStyle: any = {
+const fieldStyle: CSSProperties = {
   background: "#F8FAFC",
   border: "1px solid #E2E8F0",
   borderRadius: 8,
@@ -1612,7 +1625,7 @@ const fieldStyle: any = {
   color: "#0F172A",
   width: 160,
 };
-const primaryBtn: any = {
+const primaryBtn: CSSProperties = {
   background: "#0DD3C5",
   border: "none",
   borderRadius: 8,
@@ -1626,7 +1639,7 @@ const primaryBtn: any = {
   alignItems: "center",
   gap: 4,
 };
-const ghostBtn: any = {
+const ghostBtn: CSSProperties = {
   background: "#F1F5F9",
   border: "1px solid #E2E8F0",
   borderRadius: 8,

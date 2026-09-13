@@ -35,6 +35,8 @@ import {
   Settings2,
   BarChart3,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { Item } from "@/lib/dashboardTypes";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
@@ -131,7 +133,7 @@ const KANBAN_COLUMNS_DASH = [
 ] as const;
 type KanbanStatusDash = (typeof KANBAN_COLUMNS_DASH)[number];
 
-const STATUS_META: Record<string, { color: string; bg: string; icon: any }> = {
+const STATUS_META: Record<string, { color: string; bg: string; icon: LucideIcon }> = {
   "A Fazer": { color: "#64748B", bg: "#F8FAFC", icon: MinusCircle },
   "Em Andamento": { color: "#3B82F6", bg: "#EFF6FF", icon: Clock },
   "Pendência Interna": { color: "#F59E0B", bg: "#FFFBEB", icon: AlertCircle },
@@ -143,7 +145,7 @@ const STATUS_META: Record<string, { color: string; bg: string; icon: any }> = {
 const STATUS_ORDER = KANBAN_COLUMNS_DASH as unknown as string[];
 
 /** Derives a unified KanbanStatus from an item, handling legacy status values */
-function getItemKanbanStatus(item: any): string {
+function getItemKanbanStatus(item: Item | undefined | null): string {
   if (item.kanbanStatus && STATUS_META[item.kanbanStatus]) return item.kanbanStatus;
   const s = item.status;
   if (s === "Concluído") return "Finalizado";

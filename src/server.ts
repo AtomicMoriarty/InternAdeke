@@ -4,6 +4,21 @@ import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
+import type { Area, Cliente, Plano, Item } from "./lib/dashboardTypes";
+
+/** Segredos e bindings que o worker espera encontrar no ambiente. */
+type WorkerEnv = {
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
+  GRANOLA_WEBHOOK_SECRET?: string;
+  GRANOLA_SUPABASE_EMAIL?: string;
+  GRANOLA_SUPABASE_PASSWORD?: string;
+  [k: string]: unknown;
+};
+
+/** Corpo aceito pelo webhook do Granola. */
+type CorpoGranola = Record<string, unknown>;
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -226,7 +241,7 @@ function rowsFromGranolaTranscript(text: string) {
   return rows;
 }
 
-function buildRiskItemFromRow(row: any, granola: any) {
+function buildRiskItemFromRow(row: Record<string, unknown>, granola: Record<string, unknown>) {
   return {
     id: serverUid("it"),
     name: row.planoAcao || row.sugestao || row.assunto || "Acao de Risk Assessment",
@@ -260,7 +275,7 @@ function buildRiskItemFromRow(row: any, granola: any) {
   };
 }
 
-async function handleGranolaRisk(request: Request, env: any): Promise<Response> {
+async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Response> {
   if (request.method === "OPTIONS") return apiJson({ ok: true });
   if (request.method !== "POST") return apiJson({ error: "Use POST" }, { status: 405 });
 
@@ -269,7 +284,7 @@ async function handleGranolaRisk(request: Request, env: any): Promise<Response> 
     return apiJson({ error: "Invalid webhook secret" }, { status: 401 });
   }
 
-  let body: any;
+  let body: CorpoGranola;
   try {
     body = await request.json();
   } catch {
@@ -315,29 +330,29 @@ async function handleGranolaRisk(request: Request, env: any): Promise<Response> 
   if (!dashboard?.areas) return apiJson({ error: "Dashboard state not found" }, { status: 404 });
 
   const areaId = body.areaId || body.area_id || "compliance";
-  const area = dashboard.areas.find((a: any) => a.id === areaId);
+  const area = dashboard.areas.find((a: Area) => a.id === areaId);
   if (!area) return apiJson({ error: `Area not found: ${areaId}` }, { status: 404 });
 
   const requestedClient = plain(
     body.clienteId || body.cliente_id || body.clientName || body.cliente || body.Title || "",
   );
   const cliente =
-    area.clientes.find((c: any) => c.id === body.clienteId || c.id === body.cliente_id) ||
-    area.clientes.find((c: any) => requestedClient && requestedClient.includes(plain(c.name)));
+    area.clientes.find((c: Cliente) => c.id === body.clienteId || c.id === body.cliente_id) ||
+    area.clientes.find((c: Cliente) => requestedClient && requestedClient.includes(plain(c.name)));
   if (!cliente) {
     return apiJson(
       {
         error: "Client not found",
         hint: "Send clienteId or clientName from Zapier/Granola.",
-        availableClients: area.clientes.map((c: any) => ({ id: c.id, name: c.name })),
+        availableClients: area.clientes.map((c: Cliente) => ({ id: c.id, name: c.name })),
       },
       { status: 404 },
     );
   }
 
   const plano =
-    cliente.planos.find((p: any) => p.id === body.planoId || p.id === body.plano_id) ||
-    cliente.planos.find((p: any) => hasRiskPlanName(p.name));
+    cliente.planos.find((p: Plano) => p.id === body.planoId || p.id === body.plano_id) ||
+    cliente.planos.find((p: Plano) => hasRiskPlanName(p.name));
   if (!plano)
     return apiJson({ error: "Risk Assessment plan not found for client" }, { status: 404 });
 
@@ -352,14 +367,17 @@ async function handleGranolaRisk(request: Request, env: any): Promise<Response> 
   const previousRows = plano.riskAssessment?.rows || [];
   const rows = [...previousRows, ...generatedRows];
   const existingItems = new Set(
-    (plano.items || []).map((item: any) => item.riskAssessmentId).filter(Boolean),
+    (plano.items || []).map((item: Item) => item.riskAssessmentId).filter(Boolean),
   );
   const newItems =
     body.createItems === false
       ? []
       : generatedRows
-          .filter((riskRow: any) => riskRow.atende !== "S" && !existingItems.has(riskRow.id))
-          .map((riskRow: any) => buildRiskItemFromRow(riskRow, granola));
+          .filter(
+            (riskRow: Record<string, unknown>) =>
+              riskRow.atende !== "S" && !existingItems.has(riskRow.id),
+          )
+          .map((riskRow: Record<string, unknown>) => buildRiskItemFromRow(riskRow, granola));
 
   plano.items = [...(plano.items || []), ...newItems];
   plano.riskAssessment = {
@@ -431,7 +449,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
  * grava de volta. Roda pelo Cron Trigger, sem depender de alguem com o app
  * aberto. Idempotente — disparar duas vezes na mesma semana nao duplica.
  */
-async function rodarAcompanhamentoSemanal(env: any) {
+async function rodarAcompanhamentoSemanal(env: WorkerEnv) {
   const supabaseUrl = env?.SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -465,7 +483,7 @@ async function rodarAcompanhamentoSemanal(env: any) {
 }
 
 export default {
-  async scheduled(_event: unknown, env: any, ctx: any) {
+  async scheduled(_event: unknown, env: WorkerEnv) {
     const r = await rodarAcompanhamentoSemanal(env);
     console.log("[acompanhamento semanal]", JSON.stringify(r));
   },
@@ -479,7 +497,8 @@ export default {
       // Disparo manual, para conferir sem esperar a segunda-feira. Protegido
       // pelo mesmo segredo do webhook do Granola.
       if (url.pathname === "/api/acompanhamento-semanal") {
-        const segredo = (env as any)?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
+        const segredo =
+          (env as WorkerEnv)?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
         const enviado = url.searchParams.get("secret") || request.headers.get("x-webhook-secret");
         if (!segredo || enviado !== segredo) {
           return apiJson({ error: "Nao autorizado" }, { status: 401 });

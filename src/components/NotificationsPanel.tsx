@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { Bell, X, AtSign, MessageSquare, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNotifications, markAllRead, markRead, type Notification } from "@/lib/notifications";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { MentionText } from "@/components/MentionTextarea";
+import type { Profile } from "@/lib/profiles";
 
 function timeAgo(iso: string) {
   const ms = Date.now() - new Date(iso).getTime();
@@ -267,7 +269,7 @@ function NotifRow({
 }: {
   n: Notification;
   onClick: () => void;
-  profiles: any[];
+  profiles: Profile[];
 }) {
   const Icon = n.tipo === "mencao" ? AtSign : MessageSquare;
   const color = n.tipo === "mencao" ? "#8B5CF6" : "#0DD3C5";
@@ -375,7 +377,7 @@ function NotifRow({
   );
 }
 
-const btnPrimary: any = {
+const btnPrimary: CSSProperties = {
   background: "#0DD3C5",
   color: "#fff",
   border: "none",
@@ -386,7 +388,7 @@ const btnPrimary: any = {
   cursor: "pointer",
   fontFamily: "inherit",
 };
-const btnSecondary: any = {
+const btnSecondary: CSSProperties = {
   background: "#F8FAFC",
   color: "#475569",
   border: "1px solid #E2E8F0",

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { moduloOf } from "@/lib/areas";
+import type { DashboardState } from "@/lib/dashboardTypes";
 
 function parsePrazo(prazo: string): Date | null {
   const br = prazo.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/);

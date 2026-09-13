@@ -1,6 +1,7 @@
 // Flattens dashboard_state into a flat list of cards for the Quadro Geral.
 
 import { AREA_IDS, moduloOf } from "@/lib/areas";
+import type { DashboardState, Item } from "@/lib/dashboardTypes";
 
 export type FlatCard = {
   clienteId: string;
@@ -53,7 +54,7 @@ export const MODULO_COLOR: Record<string, string> = {
   Comercial: "#EC4899",
 };
 
-function deriveKanbanStatus(item: any): KanbanStatus {
+function deriveKanbanStatus(item: Item): KanbanStatus {
   if (item.kanbanStatus && (KANBAN_COLUMNS as readonly string[]).includes(item.kanbanStatus)) {
     return item.kanbanStatus as KanbanStatus;
   }
@@ -65,7 +66,7 @@ function deriveKanbanStatus(item: any): KanbanStatus {
   return "A Fazer";
 }
 
-export function flattenDashboard(data: any): FlatCard[] {
+export function flattenDashboard(data: DashboardState | null): FlatCard[] {
   if (!data?.areas) return [];
   const cards: FlatCard[] = [];
   for (const area of data.areas) {
@@ -75,7 +76,9 @@ export function flattenDashboard(data: any): FlatCard[] {
       for (const plano of cliente.planos || []) {
         for (const item of plano.items || []) {
           const subs = Array.isArray(item.subitens) ? item.subitens : [];
-          const subdone = subs.filter((s: any) => s.done || s.concluido).length;
+          const subdone = subs.filter(
+            (s: { done?: boolean; concluido?: boolean }) => s.done || s.concluido,
+          ).length;
           const progresso =
             typeof item.progresso === "number"
               ? item.progresso
@@ -110,7 +113,9 @@ export function flattenDashboard(data: any): FlatCard[] {
   for (const produto of data.produtos || []) {
     for (const item of produto.items || []) {
       const subs = Array.isArray(item.subitens) ? item.subitens : [];
-      const subdone = subs.filter((s: any) => s.done || s.concluido).length;
+      const subdone = subs.filter(
+        (s: { done?: boolean; concluido?: boolean }) => s.done || s.concluido,
+      ).length;
       const progresso =
         typeof item.progresso === "number"
           ? item.progresso
@@ -144,7 +149,7 @@ export function flattenDashboard(data: any): FlatCard[] {
 }
 
 /** Grava o status registrando quando mudou, base do relatorio de tempo por etapa. */
-function carimbarStatus(it: any, newStatus: KanbanStatus) {
+function carimbarStatus(it: Item, newStatus: KanbanStatus): Item {
   const agora = new Date().toISOString();
   return {
     ...it,
@@ -158,22 +163,26 @@ function carimbarStatus(it: any, newStatus: KanbanStatus) {
   };
 }
 
-export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: KanbanStatus): any {
+export function setItemKanbanStatus(
+  data: DashboardState,
+  card: FlatCard,
+  newStatus: KanbanStatus,
+): DashboardState {
   return {
     ...data,
-    areas: (data.areas || []).map((a: any) => {
+    areas: (data.areas || []).map((a) => {
       if (a.id !== card.areaId) return a;
       return {
         ...a,
-        clientes: a.clientes.map((c: any) => {
+        clientes: (a.clientes || []).map((c) => {
           if (c.id !== card.clienteId) return c;
           return {
             ...c,
-            planos: c.planos.map((p: any) => {
+            planos: (c.planos || []).map((p) => {
               if (p.id !== card.planoId) return p;
               return {
                 ...p,
-                items: p.items.map((it: any) =>
+                items: (p.items || []).map((it) =>
                   it.id !== card.itemId ? it : carimbarStatus(it, newStatus),
                 ),
               };
@@ -182,12 +191,12 @@ export function setItemKanbanStatus(data: any, card: FlatCard, newStatus: Kanban
         }),
       };
     }),
-    produtos: (data.produtos || []).map((p: any) =>
+    produtos: (data.produtos || []).map((p) =>
       card.areaId !== "produtos" || p.id !== card.clienteId
         ? p
         : {
             ...p,
-            items: (p.items || []).map((it: any) =>
+            items: (p.items || []).map((it) =>
               it.id !== card.itemId ? it : carimbarStatus(it, newStatus),
             ),
           },

@@ -20,7 +20,9 @@ export default function Gantt() {
   const [modulo, setModulo] = useState("todos");
   const [ocultarFinalizados, setOcultarFinalizados] = useState(true);
 
-  const hoje = useMemo(() => new Date(), [data]);
+  // Uma referência de 'agora' estável por render, para os cálculos não
+  // divergirem entre si dentro da mesma passada.
+  const hoje = useMemo(() => new Date(), []);
   const g = useMemo(() => (data ? montarGantt(data, hoje) : null), [data, hoje]);
 
   const barras = useMemo(() => {
@@ -400,7 +402,18 @@ export default function Gantt() {
 }
 
 /** Campo de data que só grava ao sair, para não salvar a cada tecla. */
-function CampoData({ rotulo, valor, onSalvar, atalho }) {
+function CampoData({
+  rotulo,
+  valor,
+  onSalvar,
+  atalho,
+}: {
+  rotulo: string;
+  valor: string;
+  onSalvar: (v: string) => void;
+  /** Botão de preenchimento rápido. Ausente quando não faz sentido. */
+  atalho?: string;
+}) {
   const [rascunho, setRascunho] = useState(valor || "");
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>

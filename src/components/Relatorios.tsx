@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { Download, Clock, AlertTriangle, CheckCircle2, Users, Activity, Inbox } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
@@ -34,7 +35,9 @@ export default function Relatorios() {
   const profiles = useProfiles();
   const [periodoDias, setPeriodoDias] = useState(7);
 
-  const agora = useMemo(() => new Date(), [data]);
+  // Uma referência de 'agora' estável por render, para os cálculos não
+  // divergirem entre si dentro da mesma passada.
+  const agora = useMemo(() => new Date(), []);
   const itens = useMemo(() => (data ? achatarItens(data) : []), [data]);
 
   const desde = useMemo(() => {
@@ -597,9 +600,14 @@ function Vazio({ icone, titulo, texto }) {
   );
 }
 
-const th = { padding: "6px 4px", textAlign: "center", fontWeight: 700 };
-const thLeft = { padding: "6px 4px", textAlign: "left", fontWeight: 700 };
-const td = { padding: "8px 4px", textAlign: "center", fontWeight: 700, color: "#0F172A" };
+const th: CSSProperties = { padding: "6px 4px", textAlign: "center", fontWeight: 700 };
+const thLeft: CSSProperties = { padding: "6px 4px", textAlign: "left", fontWeight: 700 };
+const td: CSSProperties = {
+  padding: "8px 4px",
+  textAlign: "center",
+  fontWeight: 700,
+  color: "#0F172A",
+};
 const btnExport = {
   display: "inline-flex",
   alignItems: "center",

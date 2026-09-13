@@ -1,16 +1,17 @@
 // Shared hook for reading + subscribing to dashboard_state, mirroring AdekeDashboard.
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { DashboardState } from "@/lib/dashboardTypes";
 
 const ROW_ID = "main";
 
 export function useDashboardState(scope = "default") {
-  const [data, setDataState] = useState<any>(null);
+  const [data, setDataState] = useState<DashboardState | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const dataRef = useRef<any>(null);
+  const dataRef = useRef<DashboardState | null>(null);
   const lastSentRef = useRef("");
   const pendingRef = useRef(false);
-  const saveTimer = useRef<any>(null);
+  const saveTimer = useRef<DashboardState | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -33,7 +34,7 @@ export function useDashboardState(scope = "default") {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "dashboard_state", filter: `id=eq.${ROW_ID}` },
-        (payload: any) => {
+        (payload: { new?: { data?: DashboardState } }) => {
           const newData = payload.new?.data;
           if (!newData) return;
           const newJson = JSON.stringify(newData);
@@ -51,8 +52,8 @@ export function useDashboardState(scope = "default") {
     };
   }, [scope]);
 
-  const update = useCallback((updater: (prev: any) => any) => {
-    setDataState((prev: any) => {
+  const update = useCallback((updater: (prev: DashboardState) => DashboardState) => {
+    setDataState((prev: DashboardState) => {
       const next = updater(prev);
       dataRef.current = next;
       pendingRef.current = true;

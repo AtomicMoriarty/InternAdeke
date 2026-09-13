@@ -49,10 +49,10 @@ export function useNotifications(userId: string | null) {
             if (payload.eventType === "INSERT") return [payload.new as Notification, ...prev];
             if (payload.eventType === "UPDATE")
               return prev.map((n) =>
-                n.id === (payload.new as any).id ? (payload.new as Notification) : n,
+                n.id === (payload.new as { id: string }).id ? (payload.new as Notification) : n,
               );
             if (payload.eventType === "DELETE")
-              return prev.filter((n) => n.id !== (payload.old as any).id);
+              return prev.filter((n) => n.id !== (payload.old as { id: string }).id);
             return prev;
           });
         },
@@ -98,7 +98,7 @@ export async function emitNotifications(opts: {
   responsibleIds: string[]; // users responsible for the item/plan
 }) {
   const { ctx, mentionedIds, responsibleIds } = opts;
-  const rows: any[] = [];
+  const rows: Record<string, unknown>[] = [];
   const mset = new Set(mentionedIds.filter((id) => id !== ctx.autor_id));
   const rset = new Set(responsibleIds.filter((id) => id !== ctx.autor_id && !mset.has(id)));
 

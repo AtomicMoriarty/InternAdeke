@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -19,6 +20,9 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AREAS } from "@/lib/areas";
+import type { DashboardState } from "@/lib/dashboardTypes";
+import type { Profile } from "@/lib/profiles";
+import type { Session } from "@supabase/supabase-js";
 import { DEFAULT_ALLOWED_MODULES } from "@/lib/profiles";
 
 /** Quadros que podem ser liberados por pessoa, mais o pseudo-modulo Produtos. */
@@ -62,7 +66,7 @@ function EuPage() {
   const [draftColor, setDraftColor] = useState(NOTE_COLORS[0]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notesReady, setNotesReady] = useState(true);
-  const [adminProfiles, setAdminProfiles] = useState<any[]>([]);
+  const [adminProfiles, setAdminProfiles] = useState<Profile[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -132,12 +136,12 @@ function EuPage() {
     setAdminProfiles(data || []);
   }
 
-  async function patchProfile(id: string, patch: any) {
+  async function patchProfile(id: string, patch: Partial<Profile>) {
     await supabase.from("profiles").update(patch).eq("id", id);
     setAdminProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }
 
-  function toggleModule(profile: any, moduleId: string) {
+  function toggleModule(profile: Profile, moduleId: string) {
     const current = Array.isArray(profile.allowed_modules)
       ? profile.allowed_modules
       : DEFAULT_ALLOWED_MODULES;
@@ -458,7 +462,7 @@ function TaskRow({ card }: { card: FlatCard }) {
           modulo: card.modulo,
           plano: card.planoId,
           item: card.itemId,
-        } as any
+        } as never
       }
       style={{
         display: "grid",
@@ -530,7 +534,23 @@ function NotificationRow({ n, onRead }: { n: Notification; onRead: () => void })
   );
 }
 
-function NoteCard({ note, editing, onEdit, onCancel, onSave, onPin, onDelete }: any) {
+function NoteCard({
+  note,
+  editing,
+  onEdit,
+  onCancel,
+  onSave,
+  onPin,
+  onDelete,
+}: {
+  note: Record<string, unknown>;
+  editing: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: (texto: string) => void;
+  onPin: () => void;
+  onDelete: () => void;
+}) {
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [color, setColor] = useState(note.color);
@@ -681,7 +701,7 @@ function formatDate(value: string) {
   });
 }
 
-const panelStyle: any = {
+const panelStyle: CSSProperties = {
   background: "#fff",
   border: "1px solid #E2E8F0",
   borderRadius: 8,
@@ -689,7 +709,7 @@ const panelStyle: any = {
   boxShadow: "0 2px 10px rgba(15,23,42,0.04)",
 };
 
-const inputStyle: any = {
+const inputStyle: CSSProperties = {
   width: "100%",
   border: "1px solid #E2E8F0",
   borderRadius: 8,
@@ -700,7 +720,7 @@ const inputStyle: any = {
   outline: "none",
 };
 
-const primaryBtn: any = {
+const primaryBtn: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
@@ -715,7 +735,7 @@ const primaryBtn: any = {
   fontFamily: "inherit",
 };
 
-const ghostBtn: any = {
+const ghostBtn: CSSProperties = {
   background: "#F1F5F9",
   border: "1px solid #E2E8F0",
   borderRadius: 8,
@@ -727,7 +747,7 @@ const ghostBtn: any = {
   fontFamily: "inherit",
 };
 
-const miniBtn: any = {
+const miniBtn: CSSProperties = {
   background: "#F8FAFC",
   border: "1px solid #E2E8F0",
   borderRadius: 7,
@@ -737,7 +757,7 @@ const miniBtn: any = {
   cursor: "pointer",
 };
 
-const topLinkStyle: any = {
+const topLinkStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,

@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef } from "react";
+import type { CSSProperties } from "react";
 import {
   Filter,
   X,
@@ -24,6 +25,7 @@ import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { emitMudancaStatus } from "@/lib/notifications";
 import { aplicarEmLote, descreverAcao, type AcaoEmLote } from "@/lib/edicaoEmLote";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import type { DashboardState } from "@/lib/dashboardTypes";
 import { MODULOS, ALL_MODULES, allowedModulesFor } from "@/lib/areas";
 
 type Filters = {
@@ -107,7 +109,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
 
   function moveCard(card: FlatCard, newStatus: KanbanStatus) {
     if (card.kanbanStatus === newStatus) return;
-    update((prev: any) => {
+    update((prev: DashboardState) => {
       const next = setItemKanbanStatus(prev, card, newStatus);
       return next;
     });
@@ -132,7 +134,8 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   function alternarSelecao(itemId: string) {
     setSelecionados((prev) => {
       const n = new Set(prev);
-      n.has(itemId) ? n.delete(itemId) : n.add(itemId);
+      if (n.has(itemId)) n.delete(itemId);
+      else n.add(itemId);
       return n;
     });
   }
@@ -159,7 +162,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
             autorNome: currentProfile?.display_name || currentUser?.email || "sistema",
           }
         : acaoRecebida;
-    update((prev: any) => aplicarEmLote(prev, alvos, acao).data);
+    update((prev: DashboardState) => aplicarEmLote(prev, alvos, acao).data);
 
     // Mudanca de status avisa os responsaveis, igual ao arrastar um card
     if (acao.tipo === "status") {
@@ -600,7 +603,7 @@ function FiltersBar({
       {/* Módulo */}
       <SegmentChoice
         value={filters.modulo}
-        onChange={(v) => setFilters({ modulo: v as any })}
+        onChange={(v) => setFilters({ modulo: v })}
         options={[{ v: "ambos", l: "Todos" }, ...MODULOS.map((m) => ({ v: m, l: m }))]}
       />
 
@@ -632,7 +635,7 @@ function FiltersBar({
 
       <SegmentChoice
         value={filters.prazo}
-        onChange={(v) => setFilters({ prazo: v as any })}
+        onChange={(v) => setFilters({ prazo: v as Filters["prazo"] })}
         options={[
           { v: "todos", l: "Todos prazos" },
           { v: "hoje", l: "Hoje" },
@@ -1088,7 +1091,7 @@ function BarraDeLote({
   );
 }
 
-const btnLote: any = {
+const btnLote: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 5,
@@ -1103,7 +1106,7 @@ const btnLote: any = {
   fontFamily: "inherit",
   whiteSpace: "nowrap",
 };
-const popLote: any = {
+const popLote: CSSProperties = {
   position: "absolute",
   bottom: "calc(100% + 6px)",
   left: 0,
@@ -1115,7 +1118,7 @@ const popLote: any = {
   minWidth: 190,
   overflow: "hidden",
 };
-const itemPop: any = {
+const itemPop: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
@@ -1129,7 +1132,7 @@ const itemPop: any = {
   fontFamily: "inherit",
   textAlign: "left",
 };
-const btnPop: any = {
+const btnPop: CSSProperties = {
   background: "#0DD3C5",
   border: "none",
   borderRadius: 7,
@@ -1141,7 +1144,7 @@ const btnPop: any = {
   fontFamily: "inherit",
   flex: 1,
 };
-const btnPopSec: any = {
+const btnPopSec: CSSProperties = {
   background: "#F1F5F9",
   border: "1px solid #E2E8F0",
   borderRadius: 7,

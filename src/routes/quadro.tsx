@@ -3,16 +3,17 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Session } from "@supabase/supabase-js";
 import QuadroGeral from "@/components/QuadroGeral";
 
 export const Route = createFileRoute("/quadro")({
   validateSearch: (s: Record<string, unknown>) => ({
-    modulo: (s.modulo as any) || "ambos",
+    modulo: (s.modulo as string) || "ambos",
     clientes: parseArr(s.clientes),
     planos: parseArr(s.planos),
     responsaveis: parseArr(s.responsaveis),
     status: parseArr(s.status),
-    prazo: (s.prazo as any) || "todos",
+    prazo: (s.prazo as string) || "todos",
   }),
   component: QuadroPage,
 });
@@ -26,7 +27,7 @@ function parseArr(v: unknown): string[] {
 function QuadroPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -59,8 +60,8 @@ function QuadroPage() {
     );
   }
 
-  const setFilters = (next: any) => {
-    navigate({ to: "/quadro", search: { ...search, ...next } as any, replace: true });
+  const setFilters = (next: Record<string, unknown>) => {
+    navigate({ to: "/quadro", search: { ...search, ...next } as never, replace: true });
   };
 
   return (
@@ -113,7 +114,7 @@ function QuadroPage() {
           <User size={14} /> Eu
         </Link>
       </div>
-      <QuadroGeral filters={search as any} setFilters={setFilters} />
+      <QuadroGeral filters={search} setFilters={setFilters} />
     </div>
   );
 }
