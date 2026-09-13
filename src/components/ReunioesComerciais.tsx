@@ -47,12 +47,15 @@ import { parseBR } from "@/lib/relatorios";
 type Props = {
   data: DashboardState;
   setData: (updater: (d: DashboardState) => DashboardState) => void;
+  /** Cada aba mostra um tipo. Interna não é empresa, então tem lugar próprio. */
+  tipo: TipoReuniao;
 };
 
-export default function ReunioesComerciais({ data, setData }: Props) {
+export default function ReunioesComerciais({ data, setData, tipo }: Props) {
   const profiles = useProfiles();
   const me = useCurrentUser();
   const meuPerfil = me ? profiles.find((p) => p.id === me.id) : null;
+  const ehInterna = tipo === "interna";
 
   const [editando, setEditando] = useState<Reuniao | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
@@ -63,12 +66,15 @@ export default function ReunioesComerciais({ data, setData }: Props) {
   } | null>(null);
   const [aviso, setAviso] = useState("");
 
-  const reunioes = useMemo(() => reunioesDoComercial(data), [data]);
+  const reunioes = useMemo(
+    () => reunioesDoComercial(data).filter((r) => r.tipo === tipo),
+    [data, tipo],
+  );
   const empresas = useMemo(() => empresasDoComercial(data), [data]);
   const nomeEmpresa = (id?: string) => empresas.find((e) => e.id === id)?.nome || "";
 
   function novaReuniao() {
-    setEditando(reuniaoVazia(meuPerfil));
+    setEditando({ ...reuniaoVazia(meuPerfil), tipo });
     setAviso("");
   }
 
@@ -179,7 +185,10 @@ export default function ReunioesComerciais({ data, setData }: Props) {
           <Plus size={14} /> Nova reunião
         </button>
         <span style={{ fontSize: 11, color: "#94A3B8" }}>
-          Interna ou com cliente. O que ficar em &quot;encaminhamentos&quot; vira tarefa.
+          {ehInterna
+            ? "Reunião do time: planejamento, evento, ou conversa sobre um cliente."
+            : "Reunião com o cliente."}{" "}
+          O que ficar em &quot;encaminhamentos&quot; vira tarefa.
         </span>
       </div>
 
@@ -223,9 +232,14 @@ export default function ReunioesComerciais({ data, setData }: Props) {
             lineHeight: 1.6,
           }}
         >
-          <strong style={{ color: "#0F172A" }}>Nenhuma reunião registrada.</strong> Use &quot;Nova
-          reunião&quot; para guardar o que foi conversado, o que ficou decidido e o que cada um
-          ficou de fazer.
+          <strong style={{ color: "#0F172A" }}>
+            Nenhuma reunião {ehInterna ? "interna" : "com cliente"} registrada.
+          </strong>{" "}
+          Use &quot;Nova reunião&quot; para guardar o que foi conversado, o que ficou decidido e o
+          que cada um ficou de fazer.
+          {ehInterna
+            ? " As tarefas ficam com o time, fora do funil e fora da lista de empresas."
+            : ""}
         </div>
       )}
 
@@ -459,35 +473,28 @@ function Formulario({
             style={{ ...campo, width: 130 }}
           />
         </Campo>
-        <Campo rotulo="Tipo" largura={150}>
+        {/* Interna também pode ser sobre uma empresa — a reunião semanal em que
+            se fala do cliente X. Aí as tarefas vão para o quadro dele; sem
+            empresa, ficam com o time. */}
+        <Campo
+          rotulo={reuniao.tipo === "interna" ? "Sobre qual empresa (opcional)" : "Empresa"}
+          largura={230}
+        >
           <select
-            value={reuniao.tipo}
-            onChange={(e) => set({ tipo: e.target.value as TipoReuniao })}
-            style={{ ...campo, width: 150 }}
+            value={reuniao.clienteId || ""}
+            onChange={(e) => set({ clienteId: e.target.value })}
+            style={{ ...campo, width: 230 }}
           >
-            {TIPOS_REUNIAO.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nome}
+            <option value="">
+              {reuniao.tipo === "interna" ? "Nenhuma — assunto do time" : "Selecione…"}
+            </option>
+            {empresas.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.nome}
               </option>
             ))}
           </select>
         </Campo>
-        {reuniao.tipo === "cliente" && (
-          <Campo rotulo="Empresa" largura={200}>
-            <select
-              value={reuniao.clienteId || ""}
-              onChange={(e) => set({ clienteId: e.target.value })}
-              style={{ ...campo, width: 200 }}
-            >
-              <option value="">Selecione…</option>
-              {empresas.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.nome}
-                </option>
-              ))}
-            </select>
-          </Campo>
-        )}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>

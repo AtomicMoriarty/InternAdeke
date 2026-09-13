@@ -261,6 +261,18 @@ export function ehTarefaDeReuniao(item: Item): boolean {
   return Boolean(item?.[CAMPO_ORIGEM]);
 }
 
+/**
+ * Onde as tarefas desta reunião nascem.
+ *
+ * Uma regra só: tem empresa, vai para o quadro dela — inclusive quando a
+ * reunião é interna, porque a semanal em que se fala do cliente X gera trabalho
+ * do cliente X. Sem empresa, é assunto do time e fica no container interno,
+ * que não aparece na lista de empresas justamente para não parecer cliente.
+ */
+export function destinoDasTarefas(reuniao: Reuniao): string {
+  return reuniao.clienteId || CLIENTE_INTERNO;
+}
+
 /** Nomes dos cards que esta reunião já gerou, para não repetir. */
 function nomesJaGerados(data: DashboardState, reuniaoId: string): Set<string> {
   const out = new Set<string>();
@@ -300,8 +312,7 @@ export function planejarTarefas(
   profiles: Profile[] = [],
   agora: Date = new Date(),
 ): PlanoDeGeracao {
-  const alvoId =
-    reuniao.tipo === "interna" || !reuniao.clienteId ? CLIENTE_INTERNO : reuniao.clienteId;
+  const alvoId = destinoDasTarefas(reuniao);
   const extraidas = tarefasDoTexto(reuniao.encaminhamentos || "", profiles);
   if (!extraidas.length) return { cards: [], repetidas: 0, alvoId };
 
@@ -341,8 +352,7 @@ export function planejarValidadas(
   tarefas: TarefaValidada[],
   agora: Date = new Date(),
 ): PlanoDeGeracao {
-  const alvoId =
-    reuniao.tipo === "interna" || !reuniao.clienteId ? CLIENTE_INTERNO : reuniao.clienteId;
+  const alvoId = destinoDasTarefas(reuniao);
   const iso = agora.toISOString();
 
   // Criar duas vezes a mesma leitura nao duplica card, igual ao outro caminho.

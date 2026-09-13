@@ -62,7 +62,7 @@ import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import FunilComercial from "@/components/FunilComercial";
 import ReunioesComerciais from "@/components/ReunioesComerciais";
 import AjudanteComercial from "@/components/AjudanteComercial";
-import { ehAreaComercial, contatosDoCliente } from "@/lib/comercial";
+import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -1486,6 +1486,7 @@ function AreaView({ areaId, data, setData, nav }) {
   const [vista, setVista] = useState(ehComercial ? "funil" : "clientes");
 
   const { total, done, pct } = areaProg(area);
+  const clientesVisiveis = (area?.clientes || []).filter((c) => c.id !== CLIENTE_INTERNO_ID);
 
   function addCliente() {
     if (!newName.trim()) return;
@@ -1664,7 +1665,8 @@ function AreaView({ areaId, data, setData, nav }) {
           {[
             ["funil", "Funil de vendas"],
             ["clientes", "Empresas"],
-            ["reunioes", "Reuniões Comerciais"],
+            ["reunioes", "Reuniões com cliente"],
+            ["internas", "Reuniões internas"],
           ].map(([id, rotulo]) => (
             <button
               key={id}
@@ -1689,7 +1691,13 @@ function AreaView({ areaId, data, setData, nav }) {
 
       {ehComercial && vista === "funil" && <FunilComercial data={data} setData={setData} />}
 
-      {ehComercial && vista === "reunioes" && <ReunioesComerciais data={data} setData={setData} />}
+      {ehComercial && vista === "reunioes" && (
+        <ReunioesComerciais data={data} setData={setData} tipo="cliente" />
+      )}
+
+      {ehComercial && vista === "internas" && (
+        <ReunioesComerciais data={data} setData={setData} tipo="interna" />
+      )}
 
       {(!ehComercial || vista === "clientes") && (
         <>
@@ -1736,8 +1744,10 @@ function AreaView({ areaId, data, setData, nav }) {
             </button>
           </div>
 
-          {/* Client grid */}
-          {area.clientes.length === 0 ? (
+          {/* Client grid. A empresa sintetica das reunioes internas nao entra:
+              ela existe so para as tarefas terem onde morar, e ali pareceria
+              um cliente do escritorio. Ela e alcancada pela aba propria. */}
+          {clientesVisiveis.length === 0 ? (
             <div
               style={{
                 background: "#FFFFFF",
@@ -1757,7 +1767,7 @@ function AreaView({ areaId, data, setData, nav }) {
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              {area.clientes.map((cliente) => {
+              {clientesVisiveis.map((cliente) => {
                 const cItems = cliente.planos.flatMap((p) => p.items);
                 const { total: ct, done: cd, pct: cp } = prog(cItems);
                 return (
