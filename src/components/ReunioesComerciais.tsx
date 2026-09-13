@@ -7,7 +7,17 @@
 
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { Plus, Trash2, ListChecks, Users, Edit3, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ListChecks,
+  Users,
+  Edit3,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Wand2,
+} from "lucide-react";
 import {
   TIPOS_REUNIAO,
   reuniaoVazia,
@@ -30,6 +40,7 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea from "@/components/MentionTextarea";
 import ItemModal from "@/components/ItemModal";
 import { emitAtribuicao } from "@/lib/notifications";
+import { lerTranscricao, linhasDeEncaminhamento, type Sugestao } from "@/lib/transcricao";
 
 type Props = {
   data: DashboardState;
@@ -306,6 +317,7 @@ export default function ReunioesComerciais({ data, setData }: Props) {
                   <Bloco titulo="O que foi conversado" texto={r.pauta} />
                   <Bloco titulo="O que ficou decidido" texto={r.decisoes} />
                   <Bloco titulo="Encaminhamentos" texto={r.encaminhamentos} />
+                  <Bloco titulo="Transcrição" texto={r.transcricao} recolhivel />
 
                   {tarefas.length > 0 && (
                     <>
@@ -369,6 +381,7 @@ export default function ReunioesComerciais({ data, setData }: Props) {
 function Formulario({
   reuniao,
   empresas,
+  profiles,
   onMudar,
   onSalvar,
   onCancelar,
@@ -452,6 +465,29 @@ function Formulario({
         </Campo>
       </div>
 
+      {/* Transcrição: lê participantes e compromissos, mas não escreve resumo.
+          A pessoa revisa cada sugestão antes de qualquer coisa virar card. */}
+      <BlocoTranscricao
+        valor={reuniao.transcricao || ""}
+        profiles={profiles}
+        onMudar={(v) => set({ transcricao: v })}
+        onUsarParticipantes={(ids, externos) =>
+          set({
+            participantes: [...new Set([...(reuniao.participantes || []), ...ids])],
+            externos: [reuniao.externos, externos.join(", ")].filter(Boolean).join(", "),
+          })
+        }
+        onUsarEncaminhamentos={(linhas) =>
+          set({
+            encaminhamentos: [reuniao.encaminhamentos, linhas].filter((x) => x?.trim()).join("\n"),
+          })
+        }
+        onUsarDecisoes={(linhas) =>
+          set({ decisoes: [reuniao.decisoes, linhas].filter((x) => x?.trim()).join("\n") })
+        }
+      />
+
+      <div style={{ height: 10 }} />
       <Rotulo>O que foi conversado</Rotulo>
       <MentionTextarea
         value={reuniao.pauta || ""}
@@ -495,24 +531,311 @@ function Formulario({
   );
 }
 
-function Bloco({ titulo, texto }: { titulo: string; texto?: string }) {
+/**
+ * Lê a transcrição e oferece o que achou.
+ *
+ * Nada entra na reunião sem alguém marcar. O que este bloco NÃO faz, de
+ * propósito: escrever "o que foi conversado". Resumir exige entender o
+ * assunto, e sem IA isso sairia ruim — melhor deixar claro do que fingir.
+ */
+function BlocoTranscricao({
+  valor,
+  profiles,
+  onMudar,
+  onUsarParticipantes,
+  onUsarEncaminhamentos,
+  onUsarDecisoes,
+}: {
+  valor: string;
+  profiles: ReturnType<typeof useProfiles>;
+  onMudar: (v: string) => void;
+  onUsarParticipantes: (ids: string[], externos: string[]) => void;
+  onUsarEncaminhamentos: (linhas: string) => void;
+  onUsarDecisoes: (linhas: string) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [leu, setLeu] = useState(false);
+  const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set());
+  const [decisoesEscolhidas, setDecisoesEscolhidas] = useState<Set<string>>(new Set());
+
+  const leitura = useMemo(() => lerTranscricao(valor, profiles), [valor, profiles]);
+  const alternar = (set2: Set<string>, chave: string) => {
+    const n = new Set(set2);
+    if (n.has(chave)) n.delete(chave);
+    else n.add(chave);
+    return n;
+  };
+  const selecionadas: Sugestao[] = leitura.compromissos.filter((c) => escolhidas.has(c.texto));
+
+  return (
+    <div style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+      <button
+        onClick={() => setAberto((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          fontFamily: "inherit",
+          padding: 0,
+          width: "100%",
+        }}
+      >
+        <FileText size={13} color="#64748B" />
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A" }}>
+          Transcrição da reunião
+        </span>
+        <span style={{ fontSize: 10, color: "#94A3B8" }}>
+          {valor.trim() ? `${valor.trim().split(/\s+/).length} palavras` : "opcional"}
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#CBD5E1" }}>
+          {aberto ? "recolher" : "abrir"}
+        </span>
+      </button>
+
+      {aberto && (
+        <div style={{ marginTop: 10 }}>
+          <textarea
+            value={valor}
+            onChange={(e) => {
+              onMudar(e.target.value);
+              setLeu(false);
+            }}
+            placeholder={
+              "Cole aqui a transcrição, com quem falou no começo de cada linha:\n\n" +
+              "Heitor: bom dia, vamos falar da proposta\n" +
+              "Bruno: eu fico de mandar a revisão até sexta"
+            }
+            rows={8}
+            style={{ ...campo, width: "100%", resize: "vertical", lineHeight: 1.5 }}
+          />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <button
+              onClick={() => {
+                setLeu(true);
+                setEscolhidas(new Set(leitura.compromissos.map((c) => c.texto)));
+                setDecisoesEscolhidas(new Set(leitura.decisoes));
+              }}
+              disabled={!valor.trim()}
+              style={{ ...botaoMini, background: valor.trim() ? "#F0FDFA" : "#F8FAFC" }}
+            >
+              <Wand2 size={12} /> Ler transcrição
+            </button>
+            <span style={{ fontSize: 10, color: "#94A3B8" }}>
+              Acha participantes e compromissos. O resumo em prosa continua seu.
+            </span>
+          </div>
+
+          {leu && (
+            <div style={{ marginTop: 12 }}>
+              {leitura.observacoes.map((o) => (
+                <p key={o} style={{ fontSize: 11, color: "#92400E", marginBottom: 5 }}>
+                  {o}
+                </p>
+              ))}
+
+              {(leitura.participantes.conhecidos.length > 0 ||
+                leitura.participantes.externos.length > 0) && (
+                <div style={{ marginBottom: 12 }}>
+                  <Rotulo>Quem falou</Rotulo>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {leitura.participantes.conhecidos.map((id) => {
+                      const p = profiles.find((x) => x.id === id);
+                      return (
+                        <span key={id} style={etiqueta}>
+                          {p?.display_name || id}
+                        </span>
+                      );
+                    })}
+                    {leitura.participantes.externos.map((nome) => (
+                      <span
+                        key={nome}
+                        style={{ ...etiqueta, background: "#F1F5F9", color: "#64748B" }}
+                      >
+                        {nome} · de fora
+                      </span>
+                    ))}
+                    <button
+                      onClick={() =>
+                        onUsarParticipantes(
+                          leitura.participantes.conhecidos,
+                          leitura.participantes.externos,
+                        )
+                      }
+                      style={{ ...botaoMini, marginLeft: 4 }}
+                    >
+                      Usar como participantes
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {leitura.compromissos.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <Rotulo>Compromissos ditos ({leitura.compromissos.length})</Rotulo>
+                  {leitura.compromissos.map((c) => {
+                    const p = c.responsavelId
+                      ? profiles.find((x) => x.id === c.responsavelId)
+                      : null;
+                    return (
+                      <label
+                        key={c.texto}
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "flex-start",
+                          padding: "6px 0",
+                          borderBottom: "1px solid #F8FAFC",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={escolhidas.has(c.texto)}
+                          onChange={() => setEscolhidas((s2) => alternar(s2, c.texto))}
+                          style={{ marginTop: 3, accentColor: "#EC4899" }}
+                        />
+                        <span style={{ flex: 1, fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+                          {c.texto}
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 10,
+                              color: "#94A3B8",
+                              marginTop: 2,
+                            }}
+                          >
+                            {p ? `→ ${p.display_name}` : "sem responsável reconhecido"}
+                            {c.prazo ? ` · ${c.prazo}` : ""}
+                            {c.confianca === "media" ? " · confirme" : ""}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                  <button
+                    onClick={() =>
+                      onUsarEncaminhamentos(linhasDeEncaminhamento(selecionadas, profiles))
+                    }
+                    disabled={!selecionadas.length}
+                    style={{ ...botaoMini, marginTop: 7 }}
+                  >
+                    <ListChecks size={12} /> Usar {selecionadas.length} como encaminhamentos
+                  </button>
+                </div>
+              )}
+
+              {leitura.decisoes.length > 0 && (
+                <div>
+                  <Rotulo>Frases que soam a decisão ({leitura.decisoes.length})</Rotulo>
+                  {leitura.decisoes.map((d) => (
+                    <label
+                      key={d}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "flex-start",
+                        padding: "6px 0",
+                        borderBottom: "1px solid #F8FAFC",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={decisoesEscolhidas.has(d)}
+                        onChange={() => setDecisoesEscolhidas((s2) => alternar(s2, d))}
+                        style={{ marginTop: 3, accentColor: "#EC4899" }}
+                      />
+                      <span style={{ flex: 1, fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+                        {d}
+                      </span>
+                    </label>
+                  ))}
+                  <button
+                    onClick={() =>
+                      onUsarDecisoes(
+                        leitura.decisoes
+                          .filter((d) => decisoesEscolhidas.has(d))
+                          .map((d) => `- ${d}`)
+                          .join("\n"),
+                      )
+                    }
+                    disabled={!decisoesEscolhidas.size}
+                    style={{ ...botaoMini, marginTop: 7 }}
+                  >
+                    Usar {decisoesEscolhidas.size} em &quot;o que ficou decidido&quot;
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const etiqueta: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#0F766E",
+  background: "#F0FDFA",
+  borderRadius: 20,
+  padding: "3px 9px",
+};
+
+function Bloco({
+  titulo,
+  texto,
+  recolhivel = false,
+}: {
+  titulo: string;
+  texto?: string;
+  /** Transcrição é longa demais para ficar aberta junto do resto. */
+  recolhivel?: boolean;
+}) {
+  const [aberto, setAberto] = useState(!recolhivel);
   if (!texto?.trim()) return null;
   return (
     <div style={{ marginBottom: 12 }}>
-      <Rotulo>{titulo}</Rotulo>
-      <p
-        style={{
-          fontSize: 12,
-          color: "#334155",
-          lineHeight: 1.6,
-          whiteSpace: "pre-wrap",
-          background: "#F8FAFC",
-          borderRadius: 8,
-          padding: "9px 11px",
-        }}
-      >
-        {texto}
-      </p>
+      {recolhivel ? (
+        <button
+          onClick={() => setAberto((v) => !v)}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <Rotulo>
+            {titulo} · {aberto ? "recolher" : `${texto.trim().split(/\s+/).length} palavras`}
+          </Rotulo>
+        </button>
+      ) : (
+        <Rotulo>{titulo}</Rotulo>
+      )}
+      {aberto && (
+        <p
+          style={{
+            fontSize: 12,
+            color: "#334155",
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            background: "#F8FAFC",
+            borderRadius: 8,
+            padding: "9px 11px",
+            maxHeight: recolhivel ? 320 : undefined,
+            overflowY: recolhivel ? "auto" : undefined,
+          }}
+        >
+          {texto}
+        </p>
+      )}
     </div>
   );
 }

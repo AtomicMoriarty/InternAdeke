@@ -39,6 +39,8 @@ export type Reuniao = {
   decisoes?: string;
   /** O que alguém ficou de fazer. É daqui que saem as tarefas. */
   encaminhamentos?: string;
+  /** A transcrição crua, quando houver. Fica guardada como registro. */
+  transcricao?: string;
   /** Ids dos cards já gerados, para não duplicar ao gerar de novo. */
   tarefasGeradas?: string[];
   criadoEm?: string;
@@ -73,6 +75,7 @@ export function reuniaoVazia(autor?: Profile | null, agora: Date = new Date()): 
     pauta: "",
     decisoes: "",
     encaminhamentos: "",
+    transcricao: "",
     tarefasGeradas: [],
     criadoEm: agora.toISOString(),
     autorId: autor?.id ?? null,
