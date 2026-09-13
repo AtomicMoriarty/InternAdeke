@@ -32,15 +32,20 @@ import {
   Stamp,
   Scale,
   Handshake,
+  Settings2,
   BarChart3,
 } from "lucide-react";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText, extractMentions } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
 import Gantt from "@/components/Gantt";
+import TemplatesModal from "@/components/TemplatesModal";
+import {
+  ensureTemplates, templatesDaArea, aplicarTemplate, resumirTemplate,
+} from "@/lib/templates";
 import {
   AREAS, AREA_IDS, ALL_MODULES, allowedModulesFor,
-  moduloOf as moduloOfArea, DEMANDAS_POR_AREA, checklistTemplateFor,
+  moduloOf as moduloOfArea, checklistTemplateFor,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
@@ -3118,6 +3123,22 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   const [dragItemId, setDragItemId] = useState(null);
   const [dragOverItemId, setDragOverItemId] = useState(null);
   const [modalItemId, setModalItemId] = useState(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const templatesDisponiveis = useMemo(
+    () => templatesDaArea(data, areaId),
+    [data, areaId],
+  );
+
+  /** Cria o card já preenchido pelo template, sem passar pelo formulário. */
+  function criarPorTemplate(tpl) {
+    const item = aplicarTemplate(tpl, { criadorId: currentUser?.id || null });
+    setPlanos((planos) => updateItemsAndResort(planos, planoId, (items) => [...items, item]));
+    setShowForm(false);
+  }
+
+  function setNomeDoCliente() {
+    setNewName(cliente?.name || "");
+  }
 
   function reorderItems(sourceId, targetId) {
     if (!sourceId || !targetId || sourceId === targetId) return;
@@ -3430,6 +3451,51 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
           >
             Novo Item
           </p>
+
+          {/* Templates: um clique cria o card com tipo, responsaveis, prazo e
+              checklist ja preenchidos. Editaveis pelo botao ao lado. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 0.6, marginRight: 2 }}>
+              Templates
+            </span>
+            {templatesDisponiveis.map((tpl) => (
+              <button
+                key={tpl.id}
+                onClick={() => criarPorTemplate(tpl)}
+                title={resumirTemplate(tpl) || "Criar card a partir deste template"}
+                style={{
+                  padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                  background: "#F8FAFC", border: `1px solid ${area.color}40`, color: area.color,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {tpl.nome}
+              </button>
+            ))}
+            <button
+              onClick={() => setNomeDoCliente()}
+              title="Usar o nome do cliente como nome do item"
+              style={{
+                padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                background: "#F1F5F9", border: "1px dashed #CBD5E1", color: "#475569",
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              + nome do cliente
+            </button>
+            <button
+              onClick={() => setShowTemplates(true)}
+              title="Criar, editar ou apagar templates"
+              style={{
+                padding: "4px 9px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                background: "transparent", border: "1px solid #E2E8F0", color: "#94A3B8",
+                cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 4,
+              }}
+            >
+              <Settings2 size={11} /> Gerenciar
+            </button>
+          </div>
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <select
               value={newTipo}
@@ -3770,6 +3836,15 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
             );
           })}
         </div>
+      )}
+
+      {showTemplates && (
+        <TemplatesModal
+          templates={Array.isArray(data.templates) ? data.templates : []}
+          areaIdPadrao={areaId}
+          onSalvar={(lista) => setData((d) => ({ ...d, templates: lista }))}
+          onFechar={() => setShowTemplates(false)}
+        />
       )}
 
       {modalItemId && (
@@ -5459,7 +5534,7 @@ export default function App() {
         .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
-        const reconciliado = ensureAreas(row.data);
+        const reconciliado = ensureTemplates(ensureAreas(row.data));
         setDataState(reconciliado);
         dataRef.current = reconciliado;
         if (reconciliado !== row.data) {
