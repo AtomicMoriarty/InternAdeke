@@ -345,6 +345,44 @@ export type TarefaValidada = {
   fraseOriginal?: string;
 };
 
+/**
+ * Um card avulso, escrito com !task no meio de um campo da reunião.
+ *
+ * O !task já valia em comentário de card, nota de plano e observação; aqui ele
+ * passa a valer também no que foi conversado, no que ficou decidido, nos
+ * encaminhamentos e na transcrição. A tarefa nasce no mesmo lugar das outras
+ * da reunião, então também fica fora do funil.
+ */
+export function tarefaSolta(
+  reuniao: Reuniao,
+  nome: string,
+  responsaveis: string[],
+  textoOriginal: string,
+  agora: Date = new Date(),
+): PlanoDeGeracao {
+  const iso = agora.toISOString();
+  const card: Item = {
+    id: idCurto("it"),
+    name: nome.slice(0, 180),
+    tipo: "Outro",
+    responsavel: "",
+    responsaveis,
+    status: "Não iniciado",
+    kanbanStatus: "A Fazer",
+    obs: "",
+    descricao: `${textoOriginal}\n\nEscrito com !task na reunião "${reuniao.titulo}" (${reuniao.data}).`,
+    prazo: "",
+    dataInicio: reuniao.data || dataBR(agora),
+    criadoEm: iso,
+    statusChangedAt: iso,
+    checklist: [],
+    etiquetas: [],
+    [CAMPO_ORIGEM]: reuniao.id,
+    criadaPorComando: true,
+  };
+  return { cards: [card], repetidas: 0, alvoId: destinoDasTarefas(reuniao) };
+}
+
 /** Monta os cards do relatório validado, sem tocar no estado. */
 export function planejarValidadas(
   data: DashboardState,

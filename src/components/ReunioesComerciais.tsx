@@ -5,7 +5,7 @@
 // o que foi conversado, o que ficou decidido, o que alguém ficou de fazer —
 // porque é a última parte que o sistema consegue transformar em card.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   Plus,
@@ -26,6 +26,7 @@ import {
   removerReuniao,
   planejarTarefas,
   planejarValidadas,
+  tarefaSolta,
   aplicarTarefas,
   tarefasDoTexto,
   tarefasDaReuniao,
@@ -43,6 +44,8 @@ import ItemModal from "@/components/ItemModal";
 import { emitAtribuicao } from "@/lib/notifications";
 import { lerTranscricao, dataSugerida, type Sugestao } from "@/lib/transcricao";
 import { parseBR } from "@/lib/relatorios";
+import { diferencaDeTexto, temAlgoAFazer, nomeDaTarefa } from "@/lib/comandos";
+import { emitNotifications } from "@/lib/notifications";
 
 type Props = {
   data: DashboardState;
@@ -151,6 +154,51 @@ export default function ReunioesComerciais({ data, setData, tipo }: Props) {
     }
   }
 
+  /**
+   * !task escrito no meio de um campo da reunião.
+   *
+   * Vale nos quatro: o que foi conversado, o que ficou decidido, os
+   * encaminhamentos e a transcrição. Só reage ao que mudou nesta edição, para
+   * o mesmo texto não virar dez cards a cada tecla.
+   */
+  function comandoNoTexto(r: Reuniao, depois: string, antes: string, ondeEscreveu: string) {
+    const cmd = diferencaDeTexto(antes, depois, profiles);
+    if (!temAlgoAFazer(cmd)) return;
+
+    if (cmd.ehTarefa) {
+      const plano = tarefaSolta(
+        r,
+        nomeDaTarefa(cmd.trecho || cmd.textoLimpo),
+        cmd.mencionados.length ? cmd.mencionados : me?.id ? [me.id] : [],
+        cmd.trecho || cmd.textoLimpo,
+      );
+      setData((d) => aplicarTarefas(salvarReuniao(d, r), r, plano));
+      avisarResponsaveis(plano.cards, r, plano.alvoId);
+      setAviso(`Tarefa criada a partir do !task em "${ondeEscreveu}".`);
+      return;
+    }
+
+    if (me && cmd.mencionados.length) {
+      emitNotifications({
+        ctx: {
+          cliente_id: r.clienteId || "",
+          cliente_nome: nomeEmpresa(r.clienteId) || "Reuniões internas",
+          modulo: "Comercial",
+          plano_id: "",
+          plano_nome: ondeEscreveu,
+          item_id: null,
+          item_nome: r.titulo,
+          autor_id: me.id,
+          autor_nome: meuPerfil?.display_name || "sistema",
+          trecho: cmd.textoLimpo.slice(0, 240),
+        },
+        mentionedIds: cmd.mencionados,
+        responsibleIds: [],
+      });
+      setAviso(`${cmd.mencionados.length} pessoa(s) avisada(s) da menção em "${ondeEscreveu}".`);
+    }
+  }
+
   function gerar(r: Reuniao) {
     // Planeja primeiro, com os dados desta renderizacao: e assim que se sabe
     // quais cards foram criados para avisar os responsaveis. O updater do React
@@ -217,6 +265,7 @@ export default function ReunioesComerciais({ data, setData, tipo }: Props) {
           onSalvar={salvar}
           onCancelar={() => setEditando(null)}
           onCriarTarefas={criarValidadas}
+          onComando={(depois, antes, onde) => comandoNoTexto(editando, depois, antes, onde)}
         />
       )}
 
@@ -444,6 +493,7 @@ function Formulario({
   onSalvar,
   onCancelar,
   onCriarTarefas,
+  onComando,
 }: {
   reuniao: Reuniao;
   empresas: { id: string; nome: string }[];
@@ -452,6 +502,7 @@ function Formulario({
   onSalvar: () => void;
   onCancelar: () => void;
   onCriarTarefas: (linhas: LinhaValidacao[]) => void;
+  onComando: (depois: string, antes: string, onde: string) => void;
 }) {
   const set = (patch: Partial<Reuniao>) => onMudar({ ...reuniao, ...patch });
   return (
@@ -532,6 +583,7 @@ function Formulario({
         }
         dataReuniao={reuniao.data}
         onCriarTarefas={onCriarTarefas}
+        onComando={onComando}
         onUsarDecisoes={(linhas) =>
           set({ decisoes: [reuniao.decisoes, linhas].filter((x) => x?.trim()).join("\n") })
         }
@@ -542,7 +594,10 @@ function Formulario({
       <MentionTextarea
         value={reuniao.pauta || ""}
         onChange={(v: string) => set({ pauta: v })}
-        placeholder="Os assuntos que passaram pela mesa..."
+        onConfirm={(depois: string, antes: string) =>
+          onComando(depois, antes, "o que foi conversado")
+        }
+        placeholder="Os assuntos que passaram pela mesa... @ menciona, !task vira tarefa"
         rows={4}
       />
 
@@ -551,7 +606,10 @@ function Formulario({
       <MentionTextarea
         value={reuniao.decisoes || ""}
         onChange={(v: string) => set({ decisoes: v })}
-        placeholder="As conclusões, sem o que ainda depende de alguém fazer..."
+        onConfirm={(depois: string, antes: string) =>
+          onComando(depois, antes, "o que ficou decidido")
+        }
+        placeholder="As conclusões, sem o que ainda depende de alguém fazer... @ e !task valem aqui"
         rows={3}
       />
 
@@ -560,6 +618,7 @@ function Formulario({
       <MentionTextarea
         value={reuniao.encaminhamentos || ""}
         onChange={(v: string) => set({ encaminhamentos: v })}
+        onConfirm={(depois: string, antes: string) => onComando(depois, antes, "encaminhamentos")}
         placeholder={
           "- Enviar a proposta revisada @bruno.pacca\n- Agendar retorno para a semana que vem @heitor.lopes"
         }
@@ -595,11 +654,13 @@ function BlocoTranscricao({
   onUsarParticipantes,
   onCriarTarefas,
   onUsarDecisoes,
+  onComando,
   dataReuniao,
 }: {
   valor: string;
   profiles: ReturnType<typeof useProfiles>;
   dataReuniao: string;
+  onComando: (depois: string, antes: string, onde: string) => void;
   onMudar: (v: string) => void;
   onUsarParticipantes: (ids: string[], externos: string[]) => void;
   onCriarTarefas: (linhas: LinhaValidacao[]) => void;
@@ -608,6 +669,7 @@ function BlocoTranscricao({
   const [aberto, setAberto] = useState(false);
   const [leu, setLeu] = useState(false);
   const [linhas, setLinhas] = useState<LinhaValidacao[]>([]);
+  const aoFocarRef = useRef(valor);
   const [decisoesEscolhidas, setDecisoesEscolhidas] = useState<Set<string>>(new Set());
 
   const leitura = useMemo(() => lerTranscricao(valor, profiles), [valor, profiles]);
@@ -655,6 +717,16 @@ function BlocoTranscricao({
             onChange={(e) => {
               onMudar(e.target.value);
               setLeu(false);
+            }}
+            onFocus={(e) => {
+              aoFocarRef.current = e.target.value;
+            }}
+            onBlur={(e) => {
+              // !task vale aqui também: alguém pode anotar um comando no meio
+              // da transcrição colada, sem passar pelo relatório.
+              const antes = aoFocarRef.current;
+              aoFocarRef.current = e.target.value;
+              if (e.target.value !== antes) onComando(e.target.value, antes, "transcrição");
             }}
             placeholder={
               "Cole aqui a transcrição, com quem falou no começo de cada linha:\n\n" +

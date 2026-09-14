@@ -5,6 +5,7 @@ import {
   Shield,
   Lock,
   Rocket,
+  FileSignature,
   Sparkles,
   Home,
   CheckCircle,
@@ -63,6 +64,16 @@ import FunilComercial from "@/components/FunilComercial";
 import ReunioesComerciais from "@/components/ReunioesComerciais";
 import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
+import DiretorioClientes from "@/components/DiretorioClientes";
+import {
+  clientesAtivos,
+  clienteNovo,
+  salvarCliente,
+  vincularNaArea,
+  migrarParaDiretorio,
+  nomeDoVinculo,
+  cadastroDoVinculo,
+} from "@/lib/diretorioClientes";
 import { emitNotifications, emitAtribuicao, emitMudancaStatus } from "@/lib/notifications";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -70,7 +81,14 @@ import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
 import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
-const AREA_ICONS = { shield: Shield, lock: Lock, stamp: Stamp, scale: Scale, handshake: Handshake };
+const AREA_ICONS = {
+  shield: Shield,
+  lock: Lock,
+  stamp: Stamp,
+  scale: Scale,
+  handshake: Handshake,
+  contract: FileSignature,
+};
 
 function moduloOf(areaId) {
   return moduloOfArea(areaId);
@@ -777,6 +795,12 @@ const TEMPLATES = {
   // cria item nenhum. Antes ele semeava "Contato" e "Dados da empresa", que
   // apareciam como negocios em Prospeccao sem ninguem ter criado. Esses dados
   // agora moram no cadastro da empresa e na lista de contatos.
+  contratos: [
+    { name: "Minutas em elaboração", items: [] },
+    { name: "Em negociação", items: [] },
+    { name: "Assinados", items: [] },
+    { name: "Renovações e prazos", items: [] },
+  ],
   comercial: [{ name: "Negócios", items: [] }],
   lgpd: [
     {
@@ -1490,37 +1514,40 @@ function AreaView({ areaId, data, setData, nav }) {
   const { total, done, pct } = areaProg(area);
   const clientesVisiveis = (area?.clientes || []).filter((c) => c.id !== CLIENTE_INTERNO_ID);
 
+  /**
+   * Coloca um cliente nesta area.
+   *
+   * O cadastro mora no diretorio, nao aqui. Se ja existir alguem com esse nome,
+   * reaproveita o cadastro em vez de criar um segundo com os mesmos dados —
+   * que era o problema de ter uma lista de clientes por area.
+   */
   function addCliente() {
-    if (!newName.trim()) return;
-    const cliente = {
-      id: `cli${uid()}`,
-      name: newName.trim(),
-      responsaveis: newClienteResp,
-      descricao: "",
-      tags: [],
-      dadosEmpresa: {
-        contato: "",
-        documento: "",
-        email: "",
-        telefone: "",
-        endereco: "",
-      },
-      planos: buildTemplatePlanos(areaId),
-      canalEtica: false,
-    };
-    setData((d) => ({
-      ...d,
-      areas: d.areas.map((a) =>
-        a.id !== areaId ? a : { ...a, clientes: [...a.clientes, cliente] },
-      ),
-    }));
+    const nome = newName.trim();
+    if (!nome) return;
+
+    const existente = clientesAtivos(data).find(
+      (c) => c.nome.trim().toLowerCase() === nome.toLowerCase(),
+    );
+    const cadastro = existente || clienteNovo(nome);
+
+    setData((d) => {
+      const comCadastro = existente ? d : salvarCliente(d, cadastro);
+      return vincularNaArea(
+        comCadastro,
+        areaId,
+        cadastro.id,
+        buildTemplatePlanos(areaId),
+        newClienteResp,
+      );
+    });
+
     if (newClienteResp.length > 0 && me) {
       emitAtribuicao({
         newIds: newClienteResp,
         oldIds: [],
         ctx: {
-          cliente_id: cliente.id,
-          cliente_nome: cliente.name,
+          cliente_id: cadastro.id,
+          cliente_nome: cadastro.nome,
           modulo: moduloOf(areaId),
           plano_id: "",
           plano_nome: "",
@@ -1535,6 +1562,7 @@ function AreaView({ areaId, data, setData, nav }) {
     setNewName("");
     setNewClienteResp([]);
   }
+
   function removeCliente(cId) {
     if (!confirm("Remover este cliente e todos os seus planos?")) return;
     setData((d) => ({
@@ -1805,7 +1833,7 @@ function AreaView({ areaId, data, setData, nav }) {
                             <Building2 size={14} color={area.color} />
                           </div>
                           <span style={{ color: "#0F172A", fontSize: 15, fontWeight: 800 }}>
-                            {cliente.name}
+                            {nomeDoVinculo(data, cliente)}
                           </span>
                         </div>
                         <p style={{ color: "#64748B", fontSize: 11, marginBottom: 12 }}>
@@ -1941,10 +1969,8 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
   const [newPlanoResp, setNewPlanoResp] = useState([]);
   const [openNotasId, setOpenNotasId] = useState(null);
   const [notaDraft, setNotaDraft] = useState({});
-  const [newTag, setNewTag] = useState("");
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
-  const [novoContato, setNovoContato] = useState({ nome: "", cargo: "", telefone: "", email: "" });
   const me = useCurrentUser();
   const profiles = useProfiles();
   const currentProfile = me ? profiles.find((p) => p.id === me.id) : null;
@@ -1970,54 +1996,8 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
     }));
   }
 
-  function updateClienteDados(field, value) {
-    updateCliente({
-      dadosEmpresa: {
-        ...(cliente.dadosEmpresa || {}),
-        [field]: value,
-      },
-    });
-  }
-
   // Contatos da empresa. O dadosEmpresa guarda um contato so; comercial fala
   // com varias pessoas na mesma empresa e precisa saber quem e quem.
-  function addContato() {
-    const nome = novoContato.nome.trim();
-    if (!nome) return;
-    updateCliente({
-      contatos: [
-        ...contatosDoCliente(cliente),
-        {
-          id: `ct${uid()}`,
-          nome,
-          cargo: novoContato.cargo.trim(),
-          telefone: novoContato.telefone.trim(),
-          email: novoContato.email.trim(),
-        },
-      ],
-    });
-    setNovoContato({ nome: "", cargo: "", telefone: "", email: "" });
-  }
-
-  function removeContato(id) {
-    updateCliente({ contatos: contatosDoCliente(cliente).filter((c) => c.id !== id) });
-  }
-
-  function addClienteTag() {
-    const tag = newTag.trim();
-    if (!tag) return;
-    const current = cliente.tags || [];
-    if (current.some((t) => t.toLowerCase() === tag.toLowerCase())) {
-      setNewTag("");
-      return;
-    }
-    updateCliente({ tags: [...current, tag] });
-    setNewTag("");
-  }
-
-  function removeClienteTag(tag) {
-    updateCliente({ tags: (cliente.tags || []).filter((t) => t !== tag) });
-  }
 
   function updatePlanos(updater) {
     setData((d) => ({
@@ -2189,7 +2169,9 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
           {area.name}
         </button>
         <ChevronRight size={13} color="#334155" />
-        <span style={{ color: "#64748B", fontSize: 12, fontWeight: 600 }}>{cliente.name}</span>
+        <span style={{ color: "#64748B", fontSize: 12, fontWeight: 600 }}>
+          {nomeDoVinculo(data, cliente)}
+        </span>
       </div>
 
       {/* Header */}
@@ -2209,7 +2191,9 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
                 <Building2 size={20} color={area.color} />
               </div>
               <div>
-                <h2 style={{ color: "#0F172A", fontSize: 20, fontWeight: 900 }}>{cliente.name}</h2>
+                <h2 style={{ color: "#0F172A", fontSize: 20, fontWeight: 900 }}>
+                  {nomeDoVinculo(data, cliente)}
+                </h2>
                 <p style={{ color: "#64748B", fontSize: 12 }}>{area.name}</p>
               </div>
             </div>
@@ -2237,6 +2221,8 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
         </div>
       </div>
 
+      {/* Cadastro da empresa: mora no diretorio, uma vez so. Aqui e leitura,
+          para nao existirem duas versoes do mesmo CNPJ em areas diferentes. */}
       <div
         style={{
           background: "#FFFFFF",
@@ -2246,192 +2232,121 @@ function ClienteView({ areaId, clienteId, data, setData, nav }) {
           marginBottom: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <Info size={15} color={area.color} />
-          <h3 style={{ color: "#0F172A", fontSize: 14, fontWeight: 900 }}>Dados do cliente</h3>
-        </div>
-        <textarea
-          value={cliente.descricao || ""}
-          onChange={(e) => updateCliente({ descricao: e.target.value })}
-          placeholder="Descrição aberta do cliente, contexto, combinados e observações gerais..."
-          rows={3}
-          style={{ ...inp, width: "100%", resize: "vertical", marginBottom: 12, lineHeight: 1.5 }}
-        />
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(140px, 1fr))",
-            gap: 8,
-            marginBottom: 12,
-          }}
-        >
-          {[
-            ["contato", "Contato principal"],
-            ["documento", "CPF / CNPJ"],
-            ["email", "E-mail"],
-            ["telefone", "Telefone"],
-            ["endereco", "Endereço"],
-          ].map(([field, placeholder]) => (
-            <input
-              key={field}
-              value={cliente.dadosEmpresa?.[field] || ""}
-              onChange={(e) => updateClienteDados(field, e.target.value)}
-              placeholder={placeholder}
-              style={{ ...inp, fontSize: 12, padding: "8px 10px" }}
-            />
-          ))}
-        </div>
-        {ehAreaComercial(areaId) && (
-          <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #F1F5F9" }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                color: "#94A3B8",
-                textTransform: "uppercase",
-                letterSpacing: 0.7,
-                marginBottom: 8,
-              }}
-            >
-              Contatos na empresa
-            </div>
-            {contatosDoCliente(cliente).map((ct) => (
-              <div
-                key={ct.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "7px 0",
-                  borderBottom: "1px solid #F8FAFC",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 26,
-                    height: 26,
-                    borderRadius: "50%",
-                    background: colorFor(ct.id),
-                    color: "#fff",
-                    fontSize: 9,
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {initials(ct.nome)}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#0F172A" }}>{ct.nome}</div>
-                  {ct.cargo && <div style={{ fontSize: 11, color: "#94A3B8" }}>{ct.cargo}</div>}
-                </div>
-                <span style={{ fontSize: 11, color: "#64748B" }}>
-                  {[ct.telefone, ct.email].filter(Boolean).join(" · ")}
-                </span>
-                <button
-                  onClick={() => removeContato(ct.id)}
-                  title="Remover contato"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#CBD5E1",
-                    cursor: "pointer",
-                    padding: 2,
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              {[
-                ["nome", "Nome"],
-                ["cargo", "Cargo"],
-                ["telefone", "Telefone"],
-                ["email", "E-mail"],
-              ].map(([campo, rotulo]) => (
-                <input
-                  key={campo}
-                  value={novoContato[campo]}
-                  onChange={(e) => setNovoContato((c) => ({ ...c, [campo]: e.target.value }))}
-                  onKeyDown={(e) => e.key === "Enter" && addContato()}
-                  placeholder={rotulo}
-                  style={{ ...inp, fontSize: 12, padding: "7px 10px", flex: 1, minWidth: 110 }}
-                />
-              ))}
-              <button
-                onClick={addContato}
-                style={{
-                  background: area.color,
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "7px 13px",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontFamily: "inherit",
-                }}
-              >
-                <Plus size={13} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {(cliente.tags || []).map((tag) => (
-            <button
-              key={tag}
-              onClick={() => removeClienteTag(tag)}
-              title="Remover tag"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                border: `1px solid ${area.color}30`,
-                background: `${area.color}12`,
-                color: area.color,
-                borderRadius: 8,
-                padding: "5px 8px",
-                fontSize: 11,
-                fontWeight: 800,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {tag} <X size={11} />
-            </button>
-          ))}
-          <input
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addClienteTag()}
-            placeholder="Adicionar tag..."
-            style={{ ...inp, width: 170, fontSize: 12, padding: "7px 10px" }}
-          />
+          <h3 style={{ color: "#0F172A", fontSize: 14, fontWeight: 900 }}>Cadastro do cliente</h3>
           <button
-            onClick={addClienteTag}
+            onClick={() => nav({ page: "clientes" })}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
+              marginLeft: "auto",
               background: "#F8FAFC",
               border: "1px solid #E2E8F0",
               borderRadius: 8,
-              color: "#64748B",
-              padding: "7px 10px",
+              padding: "5px 11px",
               fontSize: 11,
-              fontWeight: 800,
+              fontWeight: 700,
+              color: "#475569",
               cursor: "pointer",
               fontFamily: "inherit",
             }}
           >
-            <Plus size={12} /> Tag
+            Editar em Clientes
           </button>
         </div>
+
+        {(() => {
+          const cadastro = cadastroDoVinculo(data, cliente);
+          if (!cadastro) {
+            return (
+              <p style={{ fontSize: 12, color: "#94A3B8" }}>
+                Este cliente ainda não está no diretório. Abra Clientes para cadastrar os dados da
+                empresa uma vez e reaproveitar em todas as áreas.
+              </p>
+            );
+          }
+          const campos = [
+            ["CNPJ / CPF", cadastro.documento],
+            ["Contato principal", cadastro.contato],
+            ["E-mail", cadastro.email],
+            ["Telefone", cadastro.telefone],
+            ["Endereço", cadastro.endereco],
+          ].filter(([, v]) => v);
+          return (
+            <>
+              {cadastro.descricao && (
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "#334155",
+                    lineHeight: 1.6,
+                    marginBottom: 12,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {cadastro.descricao}
+                </p>
+              )}
+              {campos.length > 0 && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                    gap: 10,
+                    marginBottom: 12,
+                  }}
+                >
+                  {campos.map(([rotulo, valor]) => (
+                    <div key={rotulo}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: "#94A3B8" }}>
+                        {String(rotulo).toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#0F172A" }}>{valor}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(cadastro.contatos || []).length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#94A3B8", marginBottom: 5 }}>
+                    CONTATOS
+                  </div>
+                  {(cadastro.contatos || []).map((ct) => (
+                    <div key={ct.id} style={{ fontSize: 12, color: "#334155", padding: "2px 0" }}>
+                      {ct.nome}
+                      {ct.cargo ? ` · ${ct.cargo}` : ""}
+                      {ct.telefone || ct.email
+                        ? ` · ${[ct.telefone, ct.email].filter(Boolean).join(" · ")}`
+                        : ""}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(cadastro.tags || []).map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      border: `1px solid ${area.color}30`,
+                      background: `${area.color}12`,
+                      color: area.color,
+                      borderRadius: 8,
+                      padding: "4px 9px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {!campos.length && !cadastro.descricao && !(cadastro.tags || []).length && (
+                <p style={{ fontSize: 12, color: "#94A3B8" }}>
+                  Cadastro sem dados ainda. Preencha em Clientes e aparece aqui e nas outras áreas.
+                </p>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Add plan */}
@@ -5597,8 +5512,15 @@ const NAV = [
     view: { page: "dashboard" },
   },
   {
+    id: "clientes",
+    label: "Clientes",
+    Icon: Building2,
+    color: "#0DD3C5",
+    view: { page: "clientes" },
+  },
+  {
     id: "compliance",
-    label: "Compliance & Ética",
+    label: "Compliance e Regulatório",
     Icon: Shield,
     color: "#3B82F6",
     view: { page: "area", areaId: "compliance" },
@@ -5623,6 +5545,13 @@ const NAV = [
     Icon: Scale,
     color: "#8B5CF6",
     view: { page: "area", areaId: "societario" },
+  },
+  {
+    id: "contratos",
+    label: "Contratos",
+    Icon: FileSignature,
+    color: "#0891B2",
+    view: { page: "area", areaId: "contratos" },
   },
   {
     id: "comercial",
@@ -5654,6 +5583,7 @@ function navActiveId(view) {
   if (view.page === "area" || view.page === "cliente" || view.page === "plano") return view.areaId;
   if (view.page === "produtos" || view.page === "produto") return "produtos";
   if (view.page === "ajudante") return "ajudante";
+  if (view.page === "clientes") return "clientes";
   return "";
 }
 
@@ -5666,6 +5596,8 @@ function canAccessView(view, allowedModules) {
     return allowedModules.includes("produtos");
   // O ajudante e ferramenta do Comercial: quem ve o quadro, ve o ajudante.
   if (view.page === "ajudante") return allowedModules.includes("comercial");
+  // O diretorio serve todas as areas: quem ve qualquer quadro, ve o cadastro.
+  if (view.page === "clientes") return allowedModules.length > 0;
   return true;
 }
 
@@ -5697,7 +5629,8 @@ export default function App() {
     (item) =>
       item.id === "dashboard" ||
       allowedModules.includes(item.id) ||
-      (item.id === "ajudante" && allowedModules.includes("comercial")),
+      (item.id === "ajudante" && allowedModules.includes("comercial")) ||
+      (item.id === "clientes" && allowedModules.length > 0),
   );
   const activeId = navActiveId(view);
 
@@ -5736,7 +5669,9 @@ export default function App() {
         .maybeSingle();
       if (!mounted) return;
       if (row?.data) {
-        const reconciliado = ensureTemplates(ensureAreas(row.data));
+        // migrarParaDiretorio roda uma vez: clientes que existiam soltos em
+        // cada area viram um cadastro so, e o mesmo nome em duas areas se junta.
+        const reconciliado = migrarParaDiretorio(ensureTemplates(ensureAreas(row.data)));
         setDataState(reconciliado);
         dataRef.current = reconciliado;
         if (reconciliado !== row.data) {
@@ -6099,6 +6034,14 @@ export default function App() {
               )}
               {view.page === "ajudante" && allowedModules.includes("comercial") && (
                 <AjudanteComercial />
+              )}
+              {view.page === "clientes" && (
+                <DiretorioClientes
+                  data={data}
+                  setData={setData}
+                  planosDaArea={buildTemplatePlanos}
+                  irParaArea={(areaId) => setView({ page: "area", areaId })}
+                />
               )}
             </div>
           )}

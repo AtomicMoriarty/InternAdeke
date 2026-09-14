@@ -23,6 +23,16 @@ export type TextoInterpretado = {
   mencionados: string[];
   /** O texto sem o comando, para ficar legível no card. As menções ficam. */
   textoLimpo: string;
+  /**
+   * A linha onde o !task foi escrito.
+   *
+   * Num comentário curto dá na mesma, mas num campo longo — "o que foi
+   * conversado", uma descrição, uma transcrição — o nome do card tem que sair
+   * de onde o comando está, não da primeira frase do texto inteiro. Sem isto,
+   * escrever "!task fechar o buffet" no fim de um parágrafo criava um card
+   * chamado pela primeira frase do parágrafo.
+   */
+  trecho: string;
 };
 
 export function interpretarTexto(texto: string, profiles: Profile[]): TextoInterpretado {
@@ -46,7 +56,24 @@ export function interpretarTexto(texto: string, profiles: Profile[]): TextoInter
     .trim();
   RE_TASK.lastIndex = 0;
 
-  return { ehTarefa, mencionados, textoLimpo };
+  // O pedaço onde o comando foi escrito: primeiro a linha, e dentro dela a
+  // frase. "Falamos do evento. @bruno fechar o buffet !task" numa linha só tem
+  // que virar "fechar o buffet", não "Falamos do evento".
+  const pedacos = original.split("\n").flatMap((l) => l.split(/(?<=[.!?;])\s+/));
+  const comComando = pedacos.find((pedaco) => {
+    RE_TASK.lastIndex = 0;
+    return RE_TASK.test(pedaco);
+  });
+  RE_TASK.lastIndex = 0;
+  const trecho = comComando
+    ? comComando
+        .replace(RE_TASK, "")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+    : textoLimpo;
+  RE_TASK.lastIndex = 0;
+
+  return { ehTarefa, mencionados, textoLimpo, trecho };
 }
 
 /**
@@ -69,6 +96,7 @@ export function diferencaDeTexto(
     ehTarefa: d.ehTarefa && !a.ehTarefa,
     mencionados: d.mencionados.filter((id) => !jaMencionado.has(id)),
     textoLimpo: d.textoLimpo,
+    trecho: d.trecho,
   };
 }
 
@@ -140,7 +168,7 @@ export function tarefaDeTexto(
 
   return {
     id: `it${uid()}`,
-    name: nomeDaTarefa(interpretado.textoLimpo),
+    name: nomeDaTarefa(interpretado.trecho || interpretado.textoLimpo),
     tipo: "Outro",
     responsavel: "",
     responsaveis,
@@ -148,7 +176,7 @@ export function tarefaDeTexto(
     kanbanStatus: "A Fazer",
     obs: "",
     // O texto integral fica na descrição: o nome é só o rótulo.
-    descricao: `${interpretado.textoLimpo}\n\n- ${origem.descricaoOrigem}`,
+    descricao: `${interpretado.trecho || interpretado.textoLimpo}\n\n- ${origem.descricaoOrigem}`,
     prazo: "",
     dataInicio: dataBR(agora),
     criadoEm: iso,

@@ -7,13 +7,15 @@ export type AreaDef = {
   modulo: string; // rótulo curto usado em notificações e nos cards
   color: string; // cor da área na interface
   cardColor: string; // cor da faixa lateral do card no Quadro Geral
-  icon: "shield" | "lock" | "stamp" | "scale" | "handshake";
+  icon: "shield" | "lock" | "stamp" | "scale" | "handshake" | "contract";
 };
 
 export const AREAS: AreaDef[] = [
   {
     id: "compliance",
-    name: "Compliance & Ética",
+    // O id continua "compliance": e ele que esta gravado nas permissoes e nos
+    // cards. So o nome exibido muda.
+    name: "Compliance e Regulatório",
     modulo: "Compliance",
     color: "#0DD3C5",
     cardColor: "#8B5CF6",
@@ -42,6 +44,14 @@ export const AREAS: AreaDef[] = [
     color: "#8B5CF6",
     cardColor: "#6366F1",
     icon: "scale",
+  },
+  {
+    id: "contratos",
+    name: "Contratos",
+    modulo: "Contratos",
+    color: "#0891B2",
+    cardColor: "#0EA5E9",
+    icon: "contract",
   },
   {
     id: "comercial",
@@ -117,6 +127,17 @@ export const DEMANDAS_POR_AREA: Record<string, string[]> = {
     "Procuração",
     "Certidões",
     "Registro na Junta",
+  ],
+  contratos: [
+    "Elaboração de contrato",
+    "Revisão de contrato",
+    "Contrato de prestação de serviços",
+    "Acordo de confidencialidade (NDA)",
+    "Termo aditivo",
+    "Distrato",
+    "Renovação de contrato",
+    "Parecer sobre cláusula",
+    "Negociação de minuta",
   ],
   comercial: [
     "Proposta comercial",
