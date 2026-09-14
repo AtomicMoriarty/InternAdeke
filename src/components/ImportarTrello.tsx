@@ -14,6 +14,7 @@ import {
   lerTrello,
   planoPadrao,
   casarPessoas,
+  casarComEscritorio,
   cartoesSelecionados,
   previa,
   importar,
@@ -51,6 +52,13 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
     () => (leitura && plano ? previa(data, leitura, plano) : null),
     [data, leitura, plano],
   );
+  // Quem o casamento por nome não achou. A tela marca esses nomes para ninguém
+  // importar achando que a Isabela ainda trabalha aqui.
+  const semParProprio = useMemo(() => {
+    if (!leitura) return new Set<string>();
+    const porNome = casarPessoas(leitura, profiles);
+    return new Set(leitura.pessoas.filter((x) => !porNome[x.trelloId]).map((x) => x.trelloId));
+  }, [leitura, profiles]);
   const semColuna = useMemo(
     () => (leitura ? leitura.listas.filter((lst) => !lst.coluna) : []),
     [leitura],
@@ -70,7 +78,7 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
       setLeitura(lido);
       // Os pares de pessoa já vêm sugeridos: quase sempre estão certos, e
       // conferir sete nomes é mais rápido do que preencher sete do zero.
-      setPlano({ ...planoPadrao(lido), pessoaPorTrelloId: casarPessoas(lido, profiles) });
+      setPlano({ ...planoPadrao(lido), pessoaPorTrelloId: casarComEscritorio(lido, profiles) });
     } catch (e) {
       setLeitura(null);
       setPlano(null);
@@ -283,7 +291,9 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
 
           <Secao titulo="Quem é quem">
             <p style={{ fontSize: 11, color: "#64748B", marginBottom: 8 }}>
-              Sem par, o card entra sem responsável.{" "}
+              Quem não tem par no sistema — alguém que saiu, ou a conta do próprio quadro — fica com
+              a conta do escritório, para o card não entrar sem dono e sumir da vista de todo mundo.
+              Trocar aqui vale só para esta importação.{" "}
               {p.semResponsavel > 0 && (
                 <strong>{p.semResponsavel} dos cards não têm ninguém marcado no Trello.</strong>
               )}
@@ -296,6 +306,9 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
                 >
                   <span style={{ fontSize: 12, color: "#0F172A", minWidth: 200 }}>
                     {pessoa.nome}
+                    {semParProprio.has(pessoa.trelloId) && (
+                      <span style={{ color: "#94A3B8", fontWeight: 400 }}> (não existe aqui)</span>
+                    )}
                   </span>
                   <ArrowRight size={12} color="#94A3B8" />
                   <select

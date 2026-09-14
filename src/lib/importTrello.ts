@@ -511,20 +511,55 @@ export function planoPadrao(leitura: LeituraTrello): PlanoImportacao {
   };
 }
 
+export type PerfilParaCasar = {
+  id: string;
+  display_name: string;
+  username?: string;
+  role?: string;
+};
+
+/**
+ * A conta do escritório, que recebe o trabalho sem dono.
+ *
+ * É a conta administrativa: portoepacca@. Quem saiu do escritório continua nos
+ * cards antigos do Trello, e esses cards não podem entrar sem responsável —
+ * ficariam invisíveis para todo mundo. Vão para o escritório, que é de fato
+ * quem responde por eles até alguém assumir.
+ */
+export function contaDoEscritorio(perfis: PerfilParaCasar[]): string | null {
+  // Pelo nome antes de pelo papel: se um dia a conta do escritório sumir, cair
+  // no primeiro admin jogaria o trabalho órfão no colo de uma pessoa.
+  const pelaMarca = perfis.find((p) => {
+    const t = semAcento(`${p.display_name} ${p.username || ""}`);
+    return t.includes("PORTO") && t.includes("PACCA");
+  });
+  return pelaMarca?.id || perfis.find((p) => p.role === "admin")?.id || null;
+}
+
 /**
  * Casa as pessoas do Trello com os perfis daqui pelo nome.
  *
- * Só sugere quando o nome bate inteiro, quando o primeiro e o último batem
+ * Só casa quando o nome bate inteiro, quando o primeiro e o último batem
  * ("Arthur de Carvalho Fernandes" e "Arthur Fernandes"), ou quando um nome
  * está inteiro dentro do outro com pelo menos duas palavras ("Matheus Mazzoni"
  * e "Matheus Mazzoni Rocha"). As duas palavras são o que impede "Mariana" de
  * casar com a primeira Mariana da lista quando existem duas.
+ *
+ * Quem não casa com ninguém fica de fora do resultado. Quem trata isso é
+ * casarComEscritorio(), logo abaixo — separado para a tela conseguir dizer
+ * quais nomes não existem mais aqui.
  */
 export function casarPessoas(
   leitura: LeituraTrello,
-  perfis: { id: string; display_name: string; username?: string }[],
+  perfis: PerfilParaCasar[],
 ): Record<string, string> {
-  const partes = (s: string) => semAcento(s).split(/\s+/).filter(Boolean);
+  // Divide em qualquer coisa que não seja letra ou número, e não só no espaço:
+  // "Porto & Pacca" tem que virar PORTO, PACCA para casar com "Porto e Pacca
+  // Admin", e "P&P" não pode virar uma palavra só.
+  const partes = (s: string) =>
+    semAcento(s)
+      .split(/[^A-Z0-9]+/)
+      .filter(Boolean);
   const out: Record<string, string> = {};
   for (const p of leitura.pessoas) {
     const a = partes(p.nome);
@@ -538,6 +573,26 @@ export function casarPessoas(
     });
     if (achado) out[p.trelloId] = achado.id;
   }
+  return out;
+}
+
+/**
+ * O casamento por nome, mais a conta do escritório para o resto.
+ *
+ * É o que o plano usa. Sem isso, o card de quem saiu entraria sem responsável
+ * e sumiria da vista de todo mundo: não aparece em "Eu", não cobra ninguém,
+ * não entra em relatório de carga. A Isabela Porto não trabalha mais aqui, mas
+ * as marcas que estavam com ela continuam existindo.
+ */
+export function casarComEscritorio(
+  leitura: LeituraTrello,
+  perfis: PerfilParaCasar[],
+): Record<string, string> {
+  const pares = casarPessoas(leitura, perfis);
+  const escritorio = contaDoEscritorio(perfis);
+  if (!escritorio) return pares;
+  const out = { ...pares };
+  for (const p of leitura.pessoas) if (!out[p.trelloId]) out[p.trelloId] = escritorio;
   return out;
 }
 
