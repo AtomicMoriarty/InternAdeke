@@ -7,7 +7,8 @@
 
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { Plus, Search, Trash2, Building2, Check, X, UserPlus, Undo2 } from "lucide-react";
+import { Plus, Search, Trash2, Building2, Check, X, UserPlus, Undo2, Upload } from "lucide-react";
+import ImportarTrello from "@/components/ImportarTrello";
 import {
   clientesAtivos,
   diretorio,
@@ -40,6 +41,7 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
   const [novoNome, setNovoNome] = useState("");
   const [aberto, setAberto] = useState<string | null>(null);
   const [mostrarInativos, setMostrarInativos] = useState(false);
+  const [importando, setImportando] = useState(false);
   const [erro, setErro] = useState("");
 
   const lista = useMemo(() => {
@@ -122,12 +124,20 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
           <Plus size={14} /> Cadastrar
         </button>
         <button
-          onClick={() => setMostrarInativos((v) => !v)}
+          onClick={() => setImportando((v) => !v)}
           style={{ ...botaoMini, marginLeft: "auto" }}
+          title="Trazer um quadro do Trello: clientes, cards, colunas e responsáveis"
         >
+          <Upload size={12} /> Importar do Trello
+        </button>
+        <button onClick={() => setMostrarInativos((v) => !v)} style={botaoMini}>
           {mostrarInativos ? "Ocultar inativos" : "Mostrar inativos"}
         </button>
       </div>
+
+      {importando && (
+        <ImportarTrello data={data} setData={setData} onFechar={() => setImportando(false)} />
+      )}
 
       {erro && (
         <p style={{ fontSize: 12, color: "#B91C1C", marginBottom: 12 }}>
