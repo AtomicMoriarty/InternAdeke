@@ -19,6 +19,9 @@ import {
   importar,
   nomeDoCartao,
   areaDoCartao,
+  colunaDoCartao,
+  AREAS_DESTINO,
+  DESTINO_AUTO,
   NOME_SEM_CLIENTE,
   PLANO_IMPORTADO,
   type LeituraTrello,
@@ -27,6 +30,7 @@ import {
 } from "@/lib/importTrello";
 import { useProfiles } from "@/lib/profiles";
 import { areaById } from "@/lib/areas";
+import { KANBAN_COLUMNS, type KanbanStatus } from "@/lib/flattenItems";
 import type { DashboardState } from "@/lib/dashboardTypes";
 
 type Props = {
@@ -46,6 +50,10 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
   const p = useMemo(
     () => (leitura && plano ? previa(data, leitura, plano) : null),
     [data, leitura, plano],
+  );
+  const semColuna = useMemo(
+    () => (leitura ? leitura.listas.filter((lst) => !lst.coluna) : []),
+    [leitura],
   );
   const amostra = useMemo(
     () => (leitura && plano ? cartoesSelecionados(leitura, plano).slice(0, 8) : []),
@@ -150,11 +158,40 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
             <Resumo n={p.clientesExistentes} rotulo="clientes já cadastrados" />
           </div>
 
-          {leitura.listasIgnoradas.length > 0 && (
-            <div style={aviso}>
-              Estas listas do Trello não correspondem a nenhuma coluna daqui e ficam de fora:{" "}
-              <strong>{leitura.listasIgnoradas.join(", ")}</strong>.
-            </div>
+          {semColuna.length > 0 && (
+            <Secao titulo="Listas que eu não reconheci">
+              <div style={aviso}>
+                Estas listas do Trello não têm nome de coluna daqui. Diga onde cada uma entra, ou
+                deixe em branco para não trazer os cards dela.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                {semColuna.map((lst) => (
+                  <div key={lst.nome} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "#0F172A", minWidth: 200 }}>
+                      {lst.nome} <span style={{ color: "#94A3B8" }}>({lst.cartoes} cards)</span>
+                    </span>
+                    <ArrowRight size={12} color="#94A3B8" />
+                    <select
+                      value={plano.colunaPorLista[lst.nome] || ""}
+                      onChange={(e) => {
+                        const mapa = { ...plano.colunaPorLista };
+                        if (e.target.value) mapa[lst.nome] = e.target.value as KanbanStatus;
+                        else delete mapa[lst.nome];
+                        mexer({ colunaPorLista: mapa });
+                      }}
+                      style={{ ...campo, minWidth: 190 }}
+                    >
+                      <option value="">Não trazer</option>
+                      {KANBAN_COLUMNS.map((col) => (
+                        <option key={col} value={col}>
+                          {col}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </Secao>
           )}
 
           <Secao titulo="O que trazer">
@@ -180,24 +217,30 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
 
           <Secao titulo="Para qual área">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(
-                [
-                  ["auto", "Separar pelo texto da demanda"],
-                  ["societario", "Tudo em Societário"],
-                  ["contratos", "Tudo em Contratos"],
-                ] as const
-              ).map(([valor, rotulo]) => (
+              {AREAS_DESTINO.map((a) => (
                 <button
-                  key={valor}
-                  onClick={() => mexer({ destino: valor })}
-                  style={plano.destino === valor ? botaoEscolhido : botaoMini}
+                  key={a.id}
+                  onClick={() => mexer({ destino: a.id })}
+                  style={plano.destino === a.id ? botaoEscolhido : botaoMini}
                 >
-                  {rotulo}
+                  Tudo em {a.name}
                 </button>
               ))}
+              <button
+                onClick={() => mexer({ destino: DESTINO_AUTO })}
+                style={plano.destino === DESTINO_AUTO ? botaoEscolhido : botaoMini}
+                title="Só serve para o quadro que misturava Societário e Contratos"
+              >
+                Separar entre Societário e Contratos
+              </button>
             </div>
+            {!plano.destino && (
+              <p style={{ fontSize: 11, color: "#B91C1C", marginTop: 8, fontWeight: 700 }}>
+                Não consegui adivinhar pelo nome do quadro. Escolha a área antes de importar.
+              </p>
+            )}
             <p style={{ fontSize: 11, color: "#64748B", marginTop: 8 }}>
-              O quadro misturava as duas coisas. Separando pelo texto:{" "}
+              Fica assim:{" "}
               {Object.entries(p.porArea)
                 .map(([id, n]) => `${n} em ${areaById(id)?.name || id}`)
                 .join(", ") || "nada selecionado"}
@@ -294,7 +337,7 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {amostra.map((c) => (
                   <div key={c.trelloId} style={{ fontSize: 11, color: "#475569" }}>
-                    <span style={etiquetaCinza}>{c.coluna}</span>{" "}
+                    <span style={etiquetaCinza}>{colunaDoCartao(c, plano)}</span>{" "}
                     <span style={{ color: "#0F172A", fontWeight: 700 }}>
                       {nomeDoCartao(c, plano)}
                     </span>{" "}
@@ -307,8 +350,16 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
             </Secao>
           )}
 
-          <button onClick={confirmar} disabled={p.total === 0} style={botaoPrincipal}>
-            <Check size={14} /> Importar {p.total} cards
+          <button
+            onClick={confirmar}
+            disabled={p.total === 0 || !plano.destino}
+            style={{
+              ...botaoPrincipal,
+              ...(p.total === 0 || !plano.destino ? botaoDesligado : {}),
+            }}
+          >
+            <Check size={14} />{" "}
+            {!plano.destino ? "Escolha a área de destino" : `Importar ${p.total} cards`}
           </button>
         </>
       )}
@@ -465,6 +516,10 @@ const botaoPrincipal: CSSProperties = {
   cursor: "pointer",
   fontFamily: "inherit",
   marginTop: 18,
+};
+const botaoDesligado: CSSProperties = {
+  background: "#CBD5E1",
+  cursor: "not-allowed",
 };
 const botaoMini: CSSProperties = {
   display: "inline-flex",

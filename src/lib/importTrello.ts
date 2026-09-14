@@ -16,6 +16,7 @@
 
 import type { DashboardState, Area, Cliente, Item, Comentario } from "@/lib/dashboardTypes";
 import { KANBAN_COLUMNS, type KanbanStatus } from "@/lib/flattenItems";
+import { AREAS } from "@/lib/areas";
 import {
   CAMPO_VINCULO,
   clienteNovo,
@@ -143,11 +144,22 @@ const APELIDOS: Record<string, KanbanStatus> = {
   DOING: "Em Andamento",
   "PENDENCIA INTERNA": "Pendência Interna",
   "PENDENCIA CLIENTE": "Pendência Cliente",
+  "EM ANALISE": "Em Andamento",
+  "AGUARDANDO INTERNO": "Pendência Interna",
+  "AGUARDANDO CLIENTE": "Pendência Cliente",
+  "PENDENCIA DO CLIENTE": "Pendência Cliente",
   MONITORAMENTO: "Monitoramento",
+  ACOMPANHAMENTO: "Monitoramento",
   FINALIZADO: "Finalizado",
+  FINALIZADOS: "Finalizado",
+  FINALIZADAS: "Finalizado",
   CONCLUIDO: "Finalizado",
+  CONCLUIDOS: "Finalizado",
+  CONCLUIDAS: "Finalizado",
   DONE: "Finalizado",
   SUSPENSO: "Suspenso",
+  SUSPENSOS: "Suspenso",
+  SUSPENSAS: "Suspenso",
 };
 
 export function colunaDaLista(nome: string): KanbanStatus | null {
@@ -155,7 +167,37 @@ export function colunaDaLista(nome: string): KanbanStatus | null {
   return POR_COLUNA.get(k) || APELIDOS[k] || null;
 }
 
-// ─── Área sugerida ───────────────────────────────────────────────────────────
+// ─── Área de destino ─────────────────────────────────────────────────────────
+
+/**
+ * Adivinha a área pelo nome do quadro.
+ *
+ * "Societário e Contratos - To Do" cai em Societário, "INPI" em INPI & Marcas.
+ * É só o valor inicial do seletor: quem importa confere antes de gravar.
+ */
+export function areaDoQuadro(nomeDoQuadro: string): string | null {
+  // Compara pelo radical, sem o plural, porque o quadro se chama "Registros de
+  // Marca" e a área, "INPI & Marcas". O S é maiúsculo: semAcento() já passou
+  // tudo para caixa alta.
+  const radical = (w: string) => w.replace(/S$/, "");
+  const palavrasDe = (texto: string, minimo: number) =>
+    semAcento(texto)
+      .split(/[^A-Z0-9]+/)
+      .filter((w) => w.length >= minimo)
+      .map(radical);
+
+  const noQuadro = new Set(palavrasDe(nomeDoQuadro, 1));
+  for (const a of AREAS) {
+    if (a.id === "comercial") continue;
+    if (palavrasDe(`${a.modulo} ${a.name}`, 4).some((w) => noQuadro.has(w))) return a.id;
+  }
+  return null;
+}
+
+/** Áreas que podem receber uma importação. */
+export const AREAS_DESTINO = AREAS.filter((a) => a.id !== "comercial");
+
+// ─── Societário ou Contratos ─────────────────────────────────────────────────
 
 const RE_CONTRATO =
   /(contrat|aditiv|minuta|distrato|rescis|nda\b|confidencialidad|licenciament|parceria|termos? de uso|prestacao de servic|prestação de serviç|acordo)/i;
@@ -208,7 +250,8 @@ export type CartaoLido = {
   /** O título sem o prefixo, para quando o prefixo virar cliente. */
   demandaSemCliente: string;
   lista: string;
-  coluna: KanbanStatus;
+  /** Coluna reconhecida pelo nome da lista, ou null se a lista não bate. */
+  coluna: KanbanStatus | null;
   descricao: string;
   dataInicio: string;
   prazo: string;
@@ -233,6 +276,9 @@ export type ClienteLido = {
 
 export type PessoaLida = { trelloId: string; nome: string; username: string };
 
+/** Uma lista do quadro e para onde ela vai. */
+export type ListaLida = { nome: string; cartoes: number; coluna: KanbanStatus | null };
+
 export type LeituraTrello = {
   quadro: string;
   cartoes: CartaoLido[];
@@ -241,8 +287,15 @@ export type LeituraTrello = {
   /** Prefixos duvidosos. Ficam desmarcados até alguém dizer que são empresa. */
   sugestoes: ClienteLido[];
   pessoas: PessoaLida[];
-  /** Listas que não casaram com nenhuma coluna. Os cards delas ficam de fora. */
-  listasIgnoradas: string[];
+  /**
+   * As listas do quadro, com quantos cards cada uma tem.
+   *
+   * As que não casam com nenhuma coluna ficam com coluna null: no quadro de
+   * Societário as sete bateram sozinhas, mas outro quadro pode ter "BACKLOG"
+   * ou "AGUARDANDO CARTÓRIO", e aí alguém precisa dizer onde isso entra — em
+   * vez de perder os cards em silêncio.
+   */
+  listas: ListaLida[];
   /** Cards que entram como trabalho interno se ninguém promover o prefixo. */
   semCliente: number;
 };
@@ -306,17 +359,12 @@ export function lerTrello(bruto: unknown): LeituraTrello {
     [...contagem.entries()].filter(([, e]) => e.confiaveis > 0 || e.n >= 2).map(([k]) => k),
   );
 
-  const listasIgnoradas = new Set<string>();
   const cartoes: CartaoLido[] = [];
   let semCliente = 0;
 
   for (const c of b.cards) {
     const lista = nomeDaLista.get(String(c.idList)) || "";
     const coluna = colunaDaLista(lista);
-    if (!coluna) {
-      if (lista) listasIgnoradas.add(lista);
-      continue;
-    }
 
     const titulo = String(c.name || "").trim();
     const cand = candidatos.get(c.id) || null;
@@ -393,18 +441,40 @@ export function lerTrello(bruto: unknown): LeituraTrello {
     clientes: lidos.filter((c) => c.auto),
     sugestoes: lidos.filter((c) => !c.auto),
     pessoas,
-    listasIgnoradas: [...listasIgnoradas],
+    // Pelo nome, e não pelo id: o quadro de Compliance tem duas listas
+    // chamadas FINALIZADO, e mostrar a mesma linha duas vezes só confunde.
+    listas: [...new Set((b.lists || []).map((lst) => String(lst.name || "")))]
+      .map((nome) => ({
+        nome,
+        cartoes: cartoes.filter((c) => c.lista === nome).length,
+        coluna: colunaDaLista(nome),
+      }))
+      .filter((lst) => lst.cartoes > 0),
     semCliente,
   };
 }
 
 // ─── Plano de importação ─────────────────────────────────────────────────────
 
-export type DestinoArea = "societario" | "contratos" | "auto";
+/**
+ * Para onde vai o quadro: o id de uma área, ou "auto".
+ *
+ * "auto" só faz sentido no quadro que misturava Societário e Contratos, e é
+ * ali que ele separa pelo texto da demanda. Nos outros, a área é uma só.
+ */
+export type DestinoArea = string;
+export const DESTINO_AUTO = "auto";
 
 export type PlanoImportacao = {
   /** Para onde vão os cards: uma área só, ou separados pelo texto da demanda. */
   destino: DestinoArea;
+  /**
+   * Coluna escolhida à mão para uma lista que o nome não resolveu.
+   *
+   * Lista sem coluna aqui e sem coluna reconhecida fica de fora: um card
+   * precisa cair em alguma das sete colunas para existir no quadro.
+   */
+  colunaPorLista: Record<string, KanbanStatus>;
   incluirFinalizados: boolean;
   incluirArquivados: boolean;
   /**
@@ -421,8 +491,15 @@ export type PlanoImportacao = {
 };
 
 export function planoPadrao(leitura: LeituraTrello): PlanoImportacao {
+  // O quadro que mistura as duas áreas é o único em que separar faz sentido;
+  // nos outros já começa com a área que o nome do quadro sugere.
+  const pelaArea = areaDoQuadro(leitura.quadro);
+  const misturado = /contrat/i.test(leitura.quadro) && /societ/i.test(leitura.quadro);
   return {
-    destino: "auto",
+    // Sem palpite, fica vazio de propósito: chutar uma área faria o quadro de
+    // Marcas cair em Compliance sem ninguém notar.
+    destino: misturado ? DESTINO_AUTO : pelaArea || "",
+    colunaPorLista: {},
     incluirFinalizados: false,
     incluirArquivados: false,
     clientesEscolhidos: leitura.clientes.map((c) => c.chave),
@@ -471,6 +548,15 @@ export function casarPessoas(
  * ficou desmarcado. Nos dois casos o card entra com o título inteiro no nome —
  * tirar o prefixo de um card que não tem cliente perderia informação.
  */
+/**
+ * A coluna em que o card vai cair, já contando o que foi mapeado à mão.
+ *
+ * Null quer dizer que a lista não virou coluna nenhuma, e aí o card não entra.
+ */
+export function colunaDoCartao(c: CartaoLido, plano: PlanoImportacao): KanbanStatus | null {
+  return plano.colunaPorLista[c.lista] || c.coluna || null;
+}
+
 export function clienteDoCartao(c: CartaoLido, plano: PlanoImportacao): string | null {
   if (!c.clienteChave) return null;
   return plano.clientesEscolhidos.includes(c.clienteChave) ? c.clienteChave : null;
@@ -481,8 +567,8 @@ export function nomeDoCartao(c: CartaoLido, plano: PlanoImportacao): string {
   return clienteDoCartao(c, plano) ? c.demandaSemCliente : c.titulo;
 }
 
-export function areaDoCartao(c: CartaoLido, plano: PlanoImportacao): "societario" | "contratos" {
-  if (plano.destino !== "auto") return plano.destino;
+export function areaDoCartao(c: CartaoLido, plano: PlanoImportacao): string {
+  if (plano.destino !== DESTINO_AUTO) return plano.destino;
   return areaSugerida(nomeDoCartao(c, plano));
 }
 
@@ -490,8 +576,10 @@ export function areaDoCartao(c: CartaoLido, plano: PlanoImportacao): "societario
 export function cartoesSelecionados(leitura: LeituraTrello, plano: PlanoImportacao): CartaoLido[] {
   const escolhidos = new Set(plano.clientesEscolhidos);
   return leitura.cartoes.filter((c) => {
+    const coluna = colunaDoCartao(c, plano);
+    if (!coluna) return false;
     if (c.arquivado && !plano.incluirArquivados) return false;
-    if (c.coluna === "Finalizado" && !plano.incluirFinalizados) return false;
+    if (coluna === "Finalizado" && !plano.incluirFinalizados) return false;
     // Desmarcar uma empresa reconhecida é dizer "não traga esse cliente", e os
     // cards dela ficam de fora. Desmarcar uma sugestão é outra coisa: é dizer
     // "isso não é empresa", e o card continua entrando, como trabalho interno.
@@ -519,7 +607,8 @@ export function previa(
   const porArea: Record<string, number> = {};
   let semResponsavel = 0;
   for (const c of cards) {
-    porColuna[c.coluna] = (porColuna[c.coluna] || 0) + 1;
+    const coluna = colunaDoCartao(c, plano);
+    if (coluna) porColuna[coluna] = (porColuna[coluna] || 0) + 1;
     const area = areaDoCartao(c, plano);
     porArea[area] = (porArea[area] || 0) + 1;
     if (!c.membros.some((m) => plano.pessoaPorTrelloId[m])) semResponsavel++;
@@ -554,6 +643,14 @@ export function previa(
 
 function montarItem(c: CartaoLido, plano: PlanoImportacao, agora: Date): Item {
   const iso = agora.toISOString();
+  const coluna = colunaDoCartao(c, plano) || "A Fazer";
+
+  // Lista que não era coluna vira etiqueta. No quadro de Marcas as listas são
+  // as etapas do INPI — Exame Formal, Período de Oposição, Exame de Mérito —
+  // e jogar as três em "Em Andamento" apagaria justamente o que interessa.
+  const etiquetas = c.coluna
+    ? c.etiquetas
+    : [...c.etiquetas, { id: idCurto("et"), label: c.lista, color: "#6366F1" }];
   const responsaveis = [
     ...new Set(c.membros.map((m) => plano.pessoaPorTrelloId[m]).filter(Boolean)),
   ];
@@ -583,8 +680,8 @@ function montarItem(c: CartaoLido, plano: PlanoImportacao, agora: Date): Item {
     tipo: "Outro",
     responsavel: "",
     responsaveis,
-    status: c.coluna === "Finalizado" ? "Concluído" : "Em andamento",
-    kanbanStatus: c.coluna,
+    status: coluna === "Finalizado" ? "Concluído" : "Em andamento",
+    kanbanStatus: coluna,
     obs: "",
     descricao,
     prazo: c.prazo,
@@ -592,7 +689,7 @@ function montarItem(c: CartaoLido, plano: PlanoImportacao, agora: Date): Item {
     criadoEm: iso,
     statusChangedAt: iso,
     checklist: c.checklist,
-    etiquetas: c.etiquetas,
+    etiquetas,
     comentarios,
     origemTrello: c.trelloId,
   };
