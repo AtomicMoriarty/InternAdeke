@@ -27,6 +27,14 @@ export type ClienteDiretorio = {
   /** Contato principal, em texto. A lista completa fica em contatos. */
   contato?: string;
   contatos?: { id: string; nome: string; cargo?: string; telefone?: string; email?: string }[];
+  /**
+   * Outras grafias que significam este mesmo cliente.
+   *
+   * Nasce de juntar nomes parecidos numa importação: "INFOPAGO & FLUXSIS" e
+   * "HERALDO CERTIDÃO" viram apelidos, e da próxima vez o sistema já sabe,
+   * em vez de perguntar de novo.
+   */
+  apelidos?: string[];
   /** Setor, porte, o que o escritório quiser marcar. */
   tags?: string[];
   descricao?: string;
@@ -36,6 +44,15 @@ export type ClienteDiretorio = {
 };
 
 export const CAMPO_VINCULO = "clienteId";
+
+/**
+ * Pares de nomes que já foram olhados e não são a mesma empresa.
+ *
+ * "OASIS PAY" e "OASIS HUB" são do mesmo grupo mas têm sócios distintos: são
+ * dois clientes, e perguntar isso a cada importação seria trabalho repetido
+ * com risco de alguém responder errado um dia.
+ */
+export const CAMPO_DISTINTOS = "clientesDistintos";
 
 function idCurto(prefixo: string) {
   return `${prefixo}${Math.random().toString(36).slice(2, 9)}`;
@@ -62,6 +79,60 @@ export function clientesAtivos(data: DashboardState | null): ClienteDiretorio[] 
   return diretorio(data)
     .filter((c) => !c.inativo)
     .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+/** Chave de comparação, igual à do importador: sem acento, caixa ou pontuação. */
+function chave(s: string) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+/** Acha pelo nome ou por um apelido já registrado. */
+export function clientePorNome(
+  data: DashboardState | null,
+  nome: string,
+): ClienteDiretorio | undefined {
+  const k = chave(nome);
+  if (!k) return undefined;
+  return diretorio(data).find(
+    (c) => chave(c.nome) === k || (c.apelidos || []).some((a) => chave(a) === k),
+  );
+}
+
+/** Guarda que estes dois nomes são a mesma empresa. */
+export function registrarApelido(
+  data: DashboardState,
+  clienteId: string,
+  apelido: string,
+): DashboardState {
+  const alvo = clientePorId(data, clienteId);
+  if (!alvo || chave(apelido) === chave(alvo.nome)) return data;
+  const atuais = alvo.apelidos || [];
+  if (atuais.some((a) => chave(a) === chave(apelido))) return data;
+  return salvarCliente(data, { ...alvo, apelidos: [...atuais, apelido.trim()] });
+}
+
+/** Os pares que alguém já disse que são empresas diferentes. */
+export function paresDistintos(data: DashboardState | null): string[][] {
+  const l = (data as Record<string, unknown> | null)?.[CAMPO_DISTINTOS];
+  return Array.isArray(l) ? (l as string[][]) : [];
+}
+
+export function saoDistintos(data: DashboardState | null, a: string, b: string): boolean {
+  const [x, y] = [chave(a), chave(b)].sort();
+  return paresDistintos(data).some(([p, q]) => {
+    const [i, j] = [chave(p), chave(q)].sort();
+    return i === x && j === y;
+  });
+}
+
+/** Marca que estes dois nomes não são a mesma empresa, e nunca mais pergunta. */
+export function registrarDistintos(data: DashboardState, a: string, b: string): DashboardState {
+  if (saoDistintos(data, a, b)) return data;
+  return { ...data, [CAMPO_DISTINTOS]: [...paresDistintos(data), [a.trim(), b.trim()]] };
 }
 
 export function clientePorId(

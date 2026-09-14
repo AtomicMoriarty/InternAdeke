@@ -20,8 +20,11 @@ import { AREAS } from "@/lib/areas";
 import {
   CAMPO_VINCULO,
   clienteNovo,
+  clientePorNome,
   diretorio,
+  registrarApelido,
   salvarCliente,
+  saoDistintos,
   type ClienteDiretorio,
 } from "@/lib/diretorioClientes";
 
@@ -566,6 +569,8 @@ export function gruposSemelhantes(
   for (const c of todos) {
     const grupo = grupos.find((g) =>
       g.some((m) => {
+        // Já perguntamos uma vez e a resposta foi "não é a mesma empresa".
+        if (saoDistintos(data || null, m.nome, c.nome)) return false;
         const [curto, longo] =
           m.chave.length <= c.chave.length ? [m.chave, c.chave] : [c.chave, m.chave];
         if (curto.length >= 4 && longo.startsWith(curto)) return true;
@@ -578,8 +583,16 @@ export function gruposSemelhantes(
   }
 
   const doImport = new Set([...leitura.clientes, ...leitura.sugestoes].map((c) => c.chave));
+  // Nome que já é apelido de alguém não precisa ser perguntado de novo: a
+  // decisão está gravada, e importar() resolve sozinho.
+  const jaDecidido = (c: ClienteLido) => {
+    const achado = clientePorNome(data || null, c.nome);
+    return Boolean(achado) && chaveNome(achado!.nome) !== c.chave;
+  };
+
   return (
     grupos
+      .map((g) => g.filter((m) => !jaDecidido(m)))
       // Grupo só de nomes já cadastrados não tem o que juntar nesta importação.
       .filter((g) => g.length > 1 && g.some((m) => doImport.has(m.chave)))
       .map((g) => {
@@ -936,6 +949,12 @@ export function importar(
   let itensCriados = 0;
   let repetidos = 0;
 
+  // A grafia que o quadro usava, por chave, para gravar como apelido quando a
+  // pessoa renomear o prefixo para o nome de outra empresa.
+  const nomeLidoPorChave = new Map(
+    [...leitura.clientes, ...leitura.sugestoes].map((c) => [c.chave, c.nome]),
+  );
+
   // Cadastro no diretório, um por cliente, reaproveitando quem já existe.
   const cadastroPorChave = new Map<string, ClienteDiretorio>();
   const doDiretorio = new Map(diretorio(estado).map((c) => [chaveNome(c.nome), c]));
@@ -945,14 +964,35 @@ export function importar(
     const existe = cadastroPorChave.get(k);
     if (existe) return existe;
 
+    // Como a pessoa escolheu chamar este prefixo, e como ele veio do quadro.
     const nome = chave === null ? NOME_SEM_CLIENTE : plano.nomePorChave[chave] || chave;
-    const achado = doDiretorio.get(chaveNome(nome));
+    const lido = chave === null ? NOME_SEM_CLIENTE : nomeLidoPorChave.get(chave) || nome;
+
+    // Procura pelo nome escolhido e também pela grafia do quadro: o apelido
+    // gravado numa importação anterior resolve sozinho o que já foi decidido.
+    const achado =
+      doDiretorio.get(chaveNome(nome)) ||
+      clientePorNome(estado, nome) ||
+      clientePorNome(estado, lido);
     const cadastro = achado || clienteNovo(nome, agora);
     if (!achado) {
       estado = salvarCliente(estado, cadastro);
-      doDiretorio.set(chaveNome(nome), cadastro);
       clientesCriados++;
     }
+    doDiretorio.set(chaveNome(nome), cadastro);
+
+    // Renomear um prefixo para o nome de outro é dizer "é a mesma empresa".
+    // Guardar isso como apelido faz a decisão valer para a próxima importação.
+    if (chaveNome(lido) !== chaveNome(cadastro.nome)) {
+      estado = registrarApelido(estado, cadastro.id, lido);
+      const atualizado = diretorio(estado).find((x) => x.id === cadastro.id);
+      if (atualizado) {
+        cadastroPorChave.set(k, atualizado);
+        doDiretorio.set(chaveNome(nome), atualizado);
+        return atualizado;
+      }
+    }
+
     cadastroPorChave.set(k, cadastro);
     return cadastro;
   }

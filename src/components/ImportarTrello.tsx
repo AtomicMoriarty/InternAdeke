@@ -30,6 +30,7 @@ import {
   type PlanoImportacao,
   type ResultadoImportacao,
 } from "@/lib/importTrello";
+import { registrarDistintos } from "@/lib/diretorioClientes";
 import { useProfiles } from "@/lib/profiles";
 import { areaById } from "@/lib/areas";
 import { KANBAN_COLUMNS, type KanbanStatus } from "@/lib/flattenItems";
@@ -307,24 +308,46 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
                           </div>
                         ))}
                       </div>
-                      <button
-                        onClick={() => {
-                          const nomes = { ...plano.nomePorChave };
-                          const escolhidos = new Set(plano.clientesEscolhidos);
-                          for (const m of g.membros) {
-                            nomes[m.chave] = juntos ? m.nome : g.dono.nome;
-                            if (!juntos) escolhidos.add(m.chave);
-                          }
-                          mexer({ nomePorChave: nomes, clientesEscolhidos: [...escolhidos] });
-                        }}
-                        style={juntos ? botaoMini : botaoEscolhido}
-                      >
-                        {juntos
-                          ? "Desfazer"
-                          : g.donoJaCadastrado
-                            ? `Juntar no cadastro ${g.dono.nome}`
-                            : `Juntar em ${g.dono.nome}`}
-                      </button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        <button
+                          onClick={() => {
+                            const nomes = { ...plano.nomePorChave };
+                            const escolhidos = new Set(plano.clientesEscolhidos);
+                            for (const m of g.membros) {
+                              nomes[m.chave] = juntos ? m.nome : g.dono.nome;
+                              if (!juntos) escolhidos.add(m.chave);
+                            }
+                            mexer({ nomePorChave: nomes, clientesEscolhidos: [...escolhidos] });
+                          }}
+                          style={juntos ? botaoMini : botaoEscolhido}
+                        >
+                          {juntos
+                            ? "Desfazer"
+                            : g.donoJaCadastrado
+                              ? `Juntar no cadastro ${g.dono.nome}`
+                              : `Juntar em ${g.dono.nome}`}
+                        </button>
+                        {!juntos && (
+                          <button
+                            onClick={() => {
+                              // Grava a resposta: empresas do mesmo grupo com
+                              // sócios distintos são clientes distintos, e não
+                              // faz sentido perguntar isso de novo todo mês.
+                              setData((d) => {
+                                let novo = d;
+                                for (const m of g.membros)
+                                  if (m.chave !== g.dono.chave)
+                                    novo = registrarDistintos(novo, g.dono.nome, m.nome);
+                                return novo;
+                              });
+                            }}
+                            style={botaoMini}
+                            title="Não pergunta mais sobre este grupo nas próximas importações"
+                          >
+                            Não é a mesma
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
