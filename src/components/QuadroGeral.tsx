@@ -76,13 +76,19 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
     [data, visibleModules],
   );
 
-  // Distinct sets for filter options
+  // Opções dos filtros, agrupadas por nome e não por id.
+  //
+  // Cada área tem o seu próprio vínculo para a mesma empresa, com id diferente.
+  // Agrupando por id, a INFOPAGO aparecia três vezes na lista, e escolher uma
+  // trazia só os cards de uma área — parecia empresa repetida e filtrava menos
+  // do que a pessoa pediu. É uma empresa só, e escolhê-la traz o que ela tem em
+  // todo lugar. Vale igual para o plano: "Importado do Trello" é um só.
   const opts = useMemo(() => {
     const clientes = new Map<string, string>();
     const planos = new Map<string, string>();
     for (const c of allCards) {
-      clientes.set(c.clienteId, c.clienteNome);
-      planos.set(c.planoId, c.planoNome);
+      clientes.set(chaveDeNome(c.clienteNome), c.clienteNome);
+      planos.set(chaveDeNome(c.planoNome), c.planoNome);
     }
     return {
       clientes: [...clientes.entries()]
@@ -652,12 +658,14 @@ function FiltersBar({
         items={opts.clientes.map((c) => ({ id: c.id, label: c.name }))}
         value={filters.clientes}
         onChange={(v) => setFilters({ clientes: v })}
+        searchable
       />
       <MultiPicker
         label="Plano"
         items={opts.planos.map((p) => ({ id: p.id, label: p.name }))}
         value={filters.planos}
         onChange={(v) => setFilters({ planos: v })}
+        searchable
       />
       <MultiPicker
         label="Responsável"
@@ -1228,11 +1236,21 @@ const btnPopSec: CSSProperties = {
 };
 
 // ─── Filter logic / prazo helpers ────────────────────────────────────────────
+/** Nome comparável: sem acento, sem caixa, sem espaço sobrando. */
+function chaveDeNome(nome: string): string {
+  return String(nome || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function filterCards(cards: FlatCard[], f: Filters): FlatCard[] {
   return cards.filter((c) => {
     if (f.modulo !== "ambos" && c.modulo !== f.modulo) return false;
-    if (f.clientes.length && !f.clientes.includes(c.clienteId)) return false;
-    if (f.planos.length && !f.planos.includes(c.planoId)) return false;
+    if (f.clientes.length && !f.clientes.includes(chaveDeNome(c.clienteNome))) return false;
+    if (f.planos.length && !f.planos.includes(chaveDeNome(c.planoNome))) return false;
     if (f.responsaveis.length && !c.responsaveis.some((id) => f.responsaveis.includes(id)))
       return false;
     if (f.status.length && !f.status.includes(c.kanbanStatus)) return false;

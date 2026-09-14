@@ -358,6 +358,38 @@ export function lerTrello(bruto: unknown): LeituraTrello {
   const aceitos = new Set(
     [...contagem.entries()].filter(([, e]) => e.confiaveis > 0 || e.n >= 2).map(([k]) => k),
   );
+  /** Prefixo que foi absorvido por outro, e o que sobrou dele. */
+  const dobrados = new Map<string, { paraChave: string; qualificador: string }>();
+
+  // Segunda passada: prefixo que é "EMPRESA - alguma coisa" pertence à empresa.
+  //
+  // "TARGET - PROA HUB | Análise de Viabilidade" não é um cliente chamado
+  // "TARGET - PROA HUB": é a TARGET, e PROA HUB é a marca de que a demanda
+  // trata. Quem escreveu está qualificando o trabalho, não nomeando outra
+  // empresa. Então o cliente vira TARGET e "PROA HUB" volta para o nome do
+  // card, onde a informação continua à vista.
+  //
+  // Só dobra quando a cabeça tem mais cards do que o prefixo inteiro: é isso
+  // que distingue a empresa de verdade de uma qualificação dela.
+  for (const [chave, e] of contagem) {
+    const cabecaDe = (texto: string) => {
+      const m = /^\s*(.{2,40}?)\s+[-–:]\s+(.+)$/.exec(texto);
+      return m ? { cabeca: m[1].trim(), resto: m[2].trim() } : null;
+    };
+    const variante = [...e.variantes.keys()][0] || "";
+    const partes = cabecaDe(variante);
+    if (!partes) continue;
+    const chaveCabeca = chaveNome(partes.cabeca);
+    if (chaveCabeca === chave) continue;
+    const daCabeca = contagem.get(chaveCabeca);
+    if (!daCabeca || !aceitos.has(chaveCabeca) || daCabeca.n <= e.n) continue;
+
+    aceitos.delete(chave);
+    dobrados.set(chave, { paraChave: chaveCabeca, qualificador: partes.resto });
+    // A grafia completa entra como variante do dono, para a tela mostrar de
+    // onde aqueles cards vieram.
+    daCabeca.variantes.set(variante, (daCabeca.variantes.get(variante) || 0) + e.n);
+  }
 
   const cartoes: CartaoLido[] = [];
   let semCliente = 0;
@@ -368,7 +400,16 @@ export function lerTrello(bruto: unknown): LeituraTrello {
 
     const titulo = String(c.name || "").trim();
     const cand = candidatos.get(c.id) || null;
-    const chave = cand ? chaveNome(cand.prefixo) : null;
+    const chaveCrua = cand ? chaveNome(cand.prefixo) : null;
+    const dobra = chaveCrua ? dobrados.get(chaveCrua) : undefined;
+    const chave = dobra ? dobra.paraChave : chaveCrua;
+    // O qualificador volta para a frente do nome do card: o cliente é a
+    // TARGET, mas continua dando para ver que a demanda é da PROA HUB.
+    const semPrefixo = cand
+      ? dobra
+        ? `${dobra.qualificador} - ${cand.demanda}`
+        : cand.demanda
+      : titulo;
     const aceitoAuto = Boolean(chave && aceitos.has(chave));
     if (!aceitoAuto) semCliente++;
 
@@ -394,7 +435,7 @@ export function lerTrello(bruto: unknown): LeituraTrello {
       titulo,
       clienteChave: chave,
       aceitoAuto,
-      demandaSemCliente: cand ? cand.demanda : titulo,
+      demandaSemCliente: semPrefixo,
       lista,
       coluna,
       descricao: String(c.desc || "").trim(),
@@ -452,6 +493,109 @@ export function lerTrello(bruto: unknown): LeituraTrello {
       .filter((lst) => lst.cartoes > 0),
     semCliente,
   };
+}
+
+// ─── Nomes que parecem a mesma empresa ───────────────────────────────────────
+
+/** Palavras que quase todo nome de empresa usa: sozinhas não aproximam nada. */
+const GENERICAS = new Set([
+  "GRUPO",
+  "BANCO",
+  "CIA",
+  "COMPANHIA",
+  "SERVICOS",
+  "PROJETO",
+  "HOLDING",
+  "SOLUCOES",
+]);
+
+function primeiraPalavra(nome: string): string {
+  return chaveNome(
+    semAcento(nome)
+      .split(/[^A-Z0-9.]+/)
+      .filter(Boolean)[0] || nome,
+  );
+}
+
+export type GrupoSemelhante = {
+  /** O nome que os outros passam a ter. */
+  dono: ClienteLido;
+  /** Todos do grupo, o dono incluído, do maior para o menor. */
+  membros: ClienteLido[];
+  /** O dono já está cadastrado no diretório? Então é nele que se junta. */
+  donoJaCadastrado: boolean;
+};
+
+/**
+ * Nomes que provavelmente são a mesma empresa escrita de jeitos diferentes.
+ *
+ * Aproxima por duas vias: um nome ser começo do outro (INFOPAGO e
+ * "INFOPAGO & FLUXSIS") ou os dois começarem pela mesma palavra (OASIS e
+ * "OASIS HUB"). Exige quatro letras nas duas, senão "A²" viraria parente de
+ * "ADEKE", e descarta as palavras genéricas, senão "GRUPO ORANGE" viraria
+ * parente de "GRUPO V2".
+ *
+ * É palpite, não conclusão: MODOBANK pode ser outra empresa que não a MODO.
+ * Por isso devolve grupos para alguém olhar, e não uma fusão já feita.
+ */
+export function gruposSemelhantes(
+  leitura: LeituraTrello,
+  data?: DashboardState | null,
+): GrupoSemelhante[] {
+  // Quem já está no diretório entra na comparação. Sem isso, "OASIS HUB" no
+  // quadro de Marcas nunca encontraria a "OASIS" que o Societário já cadastrou:
+  // os quadros são lidos um de cada vez, e a semelhança mora entre eles.
+  const doDiretorio: ClienteLido[] = diretorio(data || null)
+    .filter((c) => !c.inativo)
+    .map((c) => ({
+      chave: chaveNome(c.nome),
+      nome: c.nome,
+      variantes: [c.nome],
+      cartoes: 0,
+      auto: true,
+    }));
+  const vistos = new Set<string>();
+  const todos = [...leitura.clientes, ...leitura.sugestoes, ...doDiretorio].filter((c) => {
+    if (vistos.has(c.chave)) return false;
+    vistos.add(c.chave);
+    return true;
+  });
+  const jaCadastrado = new Set(doDiretorio.map((c) => c.chave));
+  const grupos: ClienteLido[][] = [];
+
+  for (const c of todos) {
+    const grupo = grupos.find((g) =>
+      g.some((m) => {
+        const [curto, longo] =
+          m.chave.length <= c.chave.length ? [m.chave, c.chave] : [c.chave, m.chave];
+        if (curto.length >= 4 && longo.startsWith(curto)) return true;
+        const pm = primeiraPalavra(m.nome);
+        return pm.length >= 4 && !GENERICAS.has(pm) && pm === primeiraPalavra(c.nome);
+      }),
+    );
+    if (grupo) grupo.push(c);
+    else grupos.push([c]);
+  }
+
+  const doImport = new Set([...leitura.clientes, ...leitura.sugestoes].map((c) => c.chave));
+  return (
+    grupos
+      // Grupo só de nomes já cadastrados não tem o que juntar nesta importação.
+      .filter((g) => g.length > 1 && g.some((m) => doImport.has(m.chave)))
+      .map((g) => {
+        // Quem já está cadastrado manda, mesmo com menos cards: juntar no
+        // cadastro existente é o que evita a segunda ficha da mesma empresa.
+        const membros = [...g].sort((a, z) => {
+          const ja = Number(jaCadastrado.has(z.chave)) - Number(jaCadastrado.has(a.chave));
+          return ja || z.cartoes - a.cartoes || a.nome.localeCompare(z.nome);
+        });
+        return { dono: membros[0], membros, donoJaCadastrado: jaCadastrado.has(membros[0].chave) };
+      })
+      .sort((a, z) => {
+        const soma = (x: GrupoSemelhante) => x.membros.reduce((s, m) => s + m.cartoes, 0);
+        return soma(z) - soma(a);
+      })
+  );
 }
 
 // ─── Plano de importação ─────────────────────────────────────────────────────

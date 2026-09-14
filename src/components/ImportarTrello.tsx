@@ -15,6 +15,7 @@ import {
   planoPadrao,
   casarPessoas,
   casarComEscritorio,
+  gruposSemelhantes,
   cartoesSelecionados,
   previa,
   importar,
@@ -59,6 +60,10 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
     const porNome = casarPessoas(leitura, profiles);
     return new Set(leitura.pessoas.filter((x) => !porNome[x.trelloId]).map((x) => x.trelloId));
   }, [leitura, profiles]);
+  const semelhantes = useMemo(
+    () => (leitura ? gruposSemelhantes(leitura, data) : []),
+    [leitura, data],
+  );
   const semColuna = useMemo(
     () => (leitura ? leitura.listas.filter((lst) => !lst.coluna) : []),
     [leitura],
@@ -270,6 +275,62 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
               }
             />
           </Secao>
+
+          {semelhantes.length > 0 && (
+            <Secao titulo={`Parecem a mesma empresa (${semelhantes.length})`}>
+              <p style={{ fontSize: 11, color: "#64748B", marginBottom: 8 }}>
+                O mesmo nome escrito de jeitos diferentes vira um cadastro só. Confira grupo a
+                grupo: juntar é o certo para INFOPAGO e &quot;INFOPAGO &amp; FLUXSIS&quot;, mas
+                MODOBANK pode ser outra empresa que não a MODO. Juntando, os nomes de baixo passam a
+                ter o nome de cima, e é isso que funde o cadastro.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {semelhantes.map((g) => {
+                  const juntos = g.membros.every(
+                    (m) => (plano.nomePorChave[m.chave] ?? m.nome) === g.dono.nome,
+                  );
+                  return (
+                    <div key={g.dono.chave} style={{ ...caixinha, ...(juntos ? caixinhaOk : {}) }}>
+                      <div style={{ flex: 1 }}>
+                        {g.membros.map((m) => (
+                          <div key={m.chave} style={{ fontSize: 11, color: "#475569" }}>
+                            <strong style={{ color: "#0F172A" }}>
+                              {plano.nomePorChave[m.chave] ?? m.nome}
+                            </strong>{" "}
+                            <span style={{ color: "#94A3B8" }}>
+                              {m.cartoes === 0 ? "já cadastrado" : `${m.cartoes} cards`}
+                              {m.chave !== (plano.nomePorChave[m.chave] ?? m.nome) &&
+                              (plano.nomePorChave[m.chave] ?? m.nome) !== m.nome
+                                ? ` (era ${m.nome})`
+                                : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => {
+                          const nomes = { ...plano.nomePorChave };
+                          const escolhidos = new Set(plano.clientesEscolhidos);
+                          for (const m of g.membros) {
+                            nomes[m.chave] = juntos ? m.nome : g.dono.nome;
+                            if (!juntos) escolhidos.add(m.chave);
+                          }
+                          mexer({ nomePorChave: nomes, clientesEscolhidos: [...escolhidos] });
+                        }}
+                        style={juntos ? botaoMini : botaoEscolhido}
+                      >
+                        {juntos
+                          ? "Desfazer"
+                          : g.donoJaCadastrado
+                            ? `Juntar no cadastro ${g.dono.nome}`
+                            : `Juntar em ${g.dono.nome}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Secao>
+          )}
 
           {leitura.sugestoes.length > 0 && (
             <Secao titulo={`Pode ser empresa (${leitura.sugestoes.length})`}>
@@ -529,6 +590,19 @@ const botaoPrincipal: CSSProperties = {
   cursor: "pointer",
   fontFamily: "inherit",
   marginTop: 18,
+};
+const caixinha: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  background: "#F8FAFC",
+  border: "1px solid #E2E8F0",
+  borderRadius: 10,
+  padding: "9px 11px",
+};
+const caixinhaOk: CSSProperties = {
+  background: "#F0FDFA",
+  border: "1px solid #99F6E4",
 };
 const botaoDesligado: CSSProperties = {
   background: "#CBD5E1",
