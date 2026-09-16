@@ -65,6 +65,7 @@ import ReunioesComerciais from "@/components/ReunioesComerciais";
 import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 import DiretorioClientes from "@/components/DiretorioClientes";
+import { renomearPlanoImportado } from "@/lib/importTrello";
 import {
   clientesAtivos,
   clienteNovo,
@@ -5671,7 +5672,12 @@ export default function App() {
       if (row?.data) {
         // migrarParaDiretorio roda uma vez: clientes que existiam soltos em
         // cada area viram um cadastro so, e o mesmo nome em duas areas se junta.
-        const reconciliado = migrarParaDiretorio(ensureTemplates(ensureAreas(row.data)));
+        // renomearPlanoImportado troca o "Importado do Trello" das primeiras
+        // importacoes por "Demandas": o nome tem que falar do trabalho, nao de
+        // onde ele veio.
+        const reconciliado = renomearPlanoImportado(
+          migrarParaDiretorio(ensureTemplates(ensureAreas(row.data))),
+        );
         setDataState(reconciliado);
         dataRef.current = reconciliado;
         if (reconciliado !== row.data) {

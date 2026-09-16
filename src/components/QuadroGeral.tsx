@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import type { CSSProperties } from "react";
 import {
   Filter,
@@ -9,6 +9,8 @@ import {
   CalendarClock,
   Check,
   CheckSquare,
+  Search,
+  Bookmark,
 } from "lucide-react";
 import ItemModal from "@/components/ItemModal";
 import { useDashboardState } from "@/lib/useDashboardState";
@@ -35,6 +37,8 @@ type Filters = {
   responsaveis: string[];
   status: string[];
   prazo: "todos" | "hoje" | "semana" | "atrasado";
+  /** Texto livre: procura no nome do card, no cliente, no plano e nas etiquetas. */
+  busca: string;
 };
 
 const DEFAULTS: Filters = {
@@ -44,7 +48,57 @@ const DEFAULTS: Filters = {
   responsaveis: [],
   status: [],
   prazo: "todos",
+  busca: "",
 };
+
+/**
+ * Onde fica o jeito preferido de ver o quadro.
+ *
+ * É preferência de quem olha, não dado do escritório: mora no navegador, por
+ * usuário, para uma máquina compartilhada não misturar o filtro de um com o do
+ * outro.
+ */
+const CHAVE_PADRAO = "adeke:quadro:padrao:";
+
+function lerPadrao(userId?: string): Filters | null {
+  if (!userId) return null;
+  try {
+    const cru = localStorage.getItem(CHAVE_PADRAO + userId);
+    return cru ? { ...DEFAULTS, ...(JSON.parse(cru) as Filters) } : null;
+  } catch {
+    // Aba anônima, storage bloqueado: sem preferência é só abrir no padrão.
+    return null;
+  }
+}
+
+function gravarPadrao(userId: string, f: Filters) {
+  try {
+    localStorage.setItem(CHAVE_PADRAO + userId, JSON.stringify(f));
+  } catch {
+    // Não poder lembrar não pode quebrar o filtro que a pessoa acabou de usar.
+  }
+}
+
+function apagarPadrao(userId: string) {
+  try {
+    localStorage.removeItem(CHAVE_PADRAO + userId);
+  } catch {
+    /* idem */
+  }
+}
+
+/** O quadro está como veio, sem ninguém ter mexido em nada? */
+function semFiltro(f: Filters): boolean {
+  return (
+    f.modulo === "ambos" &&
+    f.prazo === "todos" &&
+    !f.busca &&
+    !f.clientes.length &&
+    !f.planos.length &&
+    !f.responsaveis.length &&
+    !f.status.length
+  );
+}
 
 type Props = {
   filters: Filters;
@@ -58,6 +112,18 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   const currentUser = useCurrentUser();
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
   const visibleModules = allowedModules || allowedModulesFor(currentProfile);
+
+  // Abriu o quadro sem filtro nenhum? Aplica o jeito que a pessoa deixou
+  // salvo. Só na abertura: depois disso ela está dirigindo, e reaplicar o
+  // padrão por cima de uma escolha dela seria teimosia.
+  const padraoAplicado = useRef(false);
+  useEffect(() => {
+    if (padraoAplicado.current || !currentUser) return;
+    padraoAplicado.current = true;
+    if (!semFiltro(filters)) return;
+    const padrao = lerPadrao(currentUser.id);
+    if (padrao && !semFiltro(padrao)) setFilters(padrao);
+  }, [currentUser, filters, setFilters]);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
   const [modalItem, setModalItem] = useState<{
@@ -235,6 +301,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
         filters={filters}
         setFilters={setFilters}
         opts={opts}
+        userId={currentUser?.id}
         profiles={profiles}
         counts={{ total: filtered.length, all: allCards.length }}
         modoSelecao={modoSelecao}
@@ -610,6 +677,7 @@ function FiltersBar({
   opts,
   profiles,
   counts,
+  userId,
   // O pai já passava as duas, mas elas não estavam declaradas aqui e o botão
   // nunca chegou a ser desenhado — a edição em lote existia sem porta de entrada.
   modoSelecao = false,
@@ -620,9 +688,11 @@ function FiltersBar({
   opts: { clientes: { id: string; name: string }[]; planos: { id: string; name: string }[] };
   profiles: Profile[];
   counts: { total: number; all: number };
+  userId?: string;
   modoSelecao?: boolean;
   onToggleSelecao?: () => void;
 }) {
+  const [salvo, setSalvo] = useState(false);
   return (
     <div
       style={{
@@ -644,6 +714,55 @@ function FiltersBar({
         <span style={{ fontSize: 11, color: "#64748B" }}>
           {counts.total} de {counts.all}
         </span>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <Search
+          size={13}
+          style={{
+            position: "absolute",
+            left: 9,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "#94A3B8",
+          }}
+        />
+        <input
+          value={filters.busca}
+          onChange={(e) => setFilters({ busca: e.target.value })}
+          placeholder="Buscar card..."
+          style={{
+            background: filters.busca ? "#F0FDFA" : "#fff",
+            border: `1px solid ${filters.busca ? "#0DD3C5" : "#E2E8F0"}`,
+            borderRadius: 8,
+            padding: "6px 10px 6px 26px",
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#0F172A",
+            fontFamily: "inherit",
+            outline: "none",
+            width: 190,
+          }}
+        />
+        {filters.busca && (
+          <button
+            onClick={() => setFilters({ busca: "" })}
+            title="Limpar a busca"
+            style={{
+              position: "absolute",
+              right: 6,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 2,
+              lineHeight: 0,
+            }}
+          >
+            <X size={12} color="#94A3B8" />
+          </button>
+        )}
       </div>
 
       {/* Módulo */}
@@ -722,10 +841,45 @@ function FiltersBar({
         ]}
       />
 
+      {userId && (
+        <button
+          onClick={() => {
+            if (semFiltro(filters)) apagarPadrao(userId);
+            else gravarPadrao(userId, filters);
+            setSalvo(true);
+            setTimeout(() => setSalvo(false), 2200);
+          }}
+          title={
+            semFiltro(filters)
+              ? "Voltar a abrir o quadro sem filtro nenhum"
+              : "Abrir o quadro já assim da próxima vez"
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: salvo ? "#0DD3C5" : "#fff",
+            border: `1px solid ${salvo ? "#0DD3C5" : "#E2E8F0"}`,
+            color: salvo ? "#fff" : "#475569",
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Bookmark size={12} />
+          {salvo ? "Guardado" : semFiltro(filters) ? "Esquecer padrão" : "Abrir sempre assim"}
+        </button>
+      )}
+
       {filters.clientes.length ||
       filters.planos.length ||
       filters.responsaveis.length ||
       filters.status.length ||
+      filters.busca ||
       filters.modulo !== "ambos" ||
       filters.prazo !== "todos" ? (
         <button
@@ -1249,6 +1403,14 @@ function chaveDeNome(nome: string): string {
 function filterCards(cards: FlatCard[], f: Filters): FlatCard[] {
   return cards.filter((c) => {
     if (f.modulo !== "ambos" && c.modulo !== f.modulo) return false;
+    if (f.busca) {
+      // Procura onde a pessoa lembraria de procurar: o nome do card, de quem é
+      // e em que pasta está, mais as etiquetas.
+      const alvo = chaveDeNome(
+        [c.itemNome, c.clienteNome, c.planoNome, (c.etiquetas || []).join(" ")].join(" "),
+      );
+      if (!alvo.includes(chaveDeNome(f.busca))) return false;
+    }
     if (f.clientes.length && !f.clientes.includes(chaveDeNome(c.clienteNome))) return false;
     if (f.planos.length && !f.planos.includes(chaveDeNome(c.planoNome))) return false;
     if (f.responsaveis.length && !c.responsaveis.some((id) => f.responsaveis.includes(id)))

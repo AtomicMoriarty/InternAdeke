@@ -28,8 +28,44 @@ import {
   type ClienteDiretorio,
 } from "@/lib/diretorioClientes";
 
-/** Plano onde tudo que vem do Trello cai, para ficar fácil de achar e desfazer. */
-export const PLANO_IMPORTADO = "Importado do Trello";
+/**
+ * Plano onde os cards importados caem.
+ *
+ * Um card precisa morar em algum plano, então não dá para não ter pasta. Mas o
+ * nome tem que falar do trabalho, não de onde ele veio: quem abre o cliente
+ * daqui a seis meses quer ver "Demandas", não a lembrança de uma migração que
+ * já acabou.
+ */
+export const PLANO_IMPORTADO = "Demandas";
+
+/** Como esse plano já se chamou. Serve para renomear o que foi importado antes. */
+export const PLANO_IMPORTADO_ANTES = "Importado do Trello";
+
+/**
+ * Renomeia os planos criados com o nome antigo.
+ *
+ * Roda na carga. Sem isso, quem já importou ficaria com "Importado do Trello"
+ * para sempre, e a próxima importação criaria um segundo plano ao lado.
+ */
+export function renomearPlanoImportado(data: DashboardState): DashboardState {
+  let algumMudou = false;
+  const areas = ((data.areas || []) as Area[]).map((a) => ({
+    ...a,
+    clientes: ((a.clientes || []) as Cliente[]).map((v) => {
+      // A marca é por cliente, e não compartilhada: com uma só, o primeiro
+      // cliente renomeado faria todos os seguintes virarem objeto novo à toa.
+      let esteMudou = false;
+      const planos = (v.planos || []).map((pl) => {
+        if (pl.name !== PLANO_IMPORTADO_ANTES) return pl;
+        esteMudou = true;
+        algumMudou = true;
+        return { ...pl, name: PLANO_IMPORTADO };
+      });
+      return esteMudou ? { ...v, planos } : v;
+    }),
+  }));
+  return algumMudou ? { ...data, areas } : data;
+}
 
 /** Cliente para os cards que não têm empresa no título: tarefa interna. */
 export const NOME_SEM_CLIENTE = "Interno (sem cliente)";

@@ -15,6 +15,8 @@ export type FlatCard = {
   legacyStatus: string;
   kanbanStatus: KanbanStatus;
   responsaveis: string[];
+  /** Rótulos das etiquetas, para a busca do quadro achar por "URGENTE". */
+  etiquetas: string[];
   notasCount: number;
   prazo: string; // ISO date or ""
   progresso: number; // 0-100
@@ -53,6 +55,12 @@ export const MODULO_COLOR: Record<string, string> = {
   Societário: "#6366F1",
   Comercial: "#EC4899",
 };
+
+function rotulos(item: Item): string[] {
+  return Array.isArray(item.etiquetas)
+    ? item.etiquetas.map((e) => String((e as { label?: string })?.label || "")).filter(Boolean)
+    : [];
+}
 
 function deriveKanbanStatus(item: Item): KanbanStatus {
   if (item.kanbanStatus && (KANBAN_COLUMNS as readonly string[]).includes(item.kanbanStatus)) {
@@ -99,6 +107,7 @@ export function flattenDashboard(data: DashboardState | null): FlatCard[] {
             legacyStatus: item.status || "",
             kanbanStatus: deriveKanbanStatus(item),
             responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
+            etiquetas: rotulos(item),
             notasCount: Array.isArray(item.notas) ? item.notas.length : 0,
             prazo: item.prazo || "",
             progresso,
@@ -136,6 +145,7 @@ export function flattenDashboard(data: DashboardState | null): FlatCard[] {
         legacyStatus: item.status || "",
         kanbanStatus: deriveKanbanStatus(item),
         responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
+        etiquetas: rotulos(item),
         notasCount: Array.isArray(item.notas) ? item.notas.length : 0,
         prazo: item.prazo || "",
         progresso,

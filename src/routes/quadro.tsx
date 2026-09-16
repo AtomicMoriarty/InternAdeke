@@ -14,6 +14,7 @@ export const Route = createFileRoute("/quadro")({
     responsaveis: parseArr(s.responsaveis),
     status: parseArr(s.status),
     prazo: (s.prazo as string) || "todos",
+    busca: (s.busca as string) || "",
   }),
   component: QuadroPage,
 });

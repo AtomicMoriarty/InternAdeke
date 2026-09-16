@@ -398,9 +398,12 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     new Date(),
   );
   const diasNaEtapaAtual = trajetoria.find((e) => e.atual)?.dias ?? null;
+  // Do mais novo para o mais antigo. Card com histórico longo — os importados
+  // do Trello chegam com dez, quinze comentários — obrigava a rolar até o fim
+  // para achar o que aconteceu hoje, que é justamente o que se vem ver.
   const allActivity: Comentario[] = (item.comentarios || [])
     .slice()
-    .sort((a: Comentario, b: Comentario) => (a.created_at || "").localeCompare(b.created_at || ""));
+    .sort((a: Comentario, b: Comentario) => (b.created_at || "").localeCompare(a.created_at || ""));
   const passoAberto = proximoPasso(item);
   // Só oferece filtro para os tipos que existem neste card.
   const tiposPresentes = [...new Set(allActivity.map(tipoDoRegistro))];
