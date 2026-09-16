@@ -44,6 +44,7 @@ import {
   type FlatCard,
   type KanbanStatus,
 } from "@/lib/flattenItems";
+import { etapasDaArea, temEtapasProprias, corDoEstado } from "@/lib/etapas";
 import { parseBR } from "@/lib/relatorios";
 import {
   useNotifications,
@@ -229,8 +230,10 @@ function EuPage() {
   }, [data, currentUser?.id]);
 
   /** Muda o status sem sair da página, avisando os responsáveis como no quadro. */
-  function mudarStatus(card: FlatCard, novo: KanbanStatus) {
-    if (card.kanbanStatus === novo) return;
+  function mudarStatus(card: FlatCard, novo: string) {
+    // Pela etapa: num card do INPI, kanbanStatus e o equivalente global e
+    // nunca seria igual a etapa escolhida no menu.
+    if ((card.etapa || card.kanbanStatus) === novo) return;
     update((prev) => setItemKanbanStatus(prev, card, novo));
     emitMudancaStatus({
       responsibleIds: card.responsaveis || [],
@@ -245,7 +248,7 @@ function EuPage() {
         item_nome: card.itemNome,
         autor_id: currentUser?.id || null,
         autor_nome: me?.display_name || currentUser?.email || "sistema",
-        trecho: `Status alterado de "${card.kanbanStatus}" para "${novo}"`,
+        trecho: `Status alterado de "${card.etapa || card.kanbanStatus}" para "${novo}"`,
       },
     });
   }
@@ -804,7 +807,8 @@ function TaskRow({
   onStatus?: (card: FlatCard, novo: KanbanStatus) => void;
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
-  const color = COLUMN_COLORS[card.kanbanStatus] || "#64748B";
+  // Pela etapa, para o card do INPI nao sair com a cor de "A Fazer".
+  const color = corDoEstado(card.etapa || card.kanbanStatus);
   // Sinais que já estavam nos dados e a página não mostrava.
   const parado = card.diasNoStatus !== null && card.diasNoStatus >= 7;
   const temChecklist = card.subtotal > 0;
@@ -866,9 +870,11 @@ function TaskRow({
               {card.diasNoStatus}d parado
             </span>
           )}
-          <span style={{ fontSize: 10, color, fontWeight: 800 }}>{card.kanbanStatus}</span>
+          <span style={{ fontSize: 10, color, fontWeight: 800 }}>
+            {card.etapa || card.kanbanStatus}
+          </span>
 
-          {onStatus && card.kanbanStatus !== "Finalizado" && (
+          {onStatus && card.kanbanStatus !== "Finalizado" && !temEtapasProprias(card.areaId) && (
             <button
               onClick={(e) => {
                 // O Link envolve a linha inteira; sem barrar aqui, agir no card
@@ -923,42 +929,45 @@ function TaskRow({
                       flexDirection: "column",
                     }}
                   >
-                    {KANBAN_COLUMNS.map((st) => (
-                      <button
-                        key={st}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setMenuAberto(false);
-                          onStatus(card, st);
-                        }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "8px 12px",
-                          background: st === card.kanbanStatus ? "#F8FAFC" : "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 11.5,
-                          fontWeight: 600,
-                          color: COLUMN_COLORS[st],
-                          textAlign: "left",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: COLUMN_COLORS[st],
-                            flexShrink: 0,
+                    {etapasDaArea(card.areaId)
+                      .map((et) => et.nome)
+                      .map((st) => (
+                        <button
+                          key={st}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setMenuAberto(false);
+                            onStatus(card, st);
                           }}
-                        />
-                        {st}
-                      </button>
-                    ))}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "8px 12px",
+                            background:
+                              st === (card.etapa || card.kanbanStatus) ? "#F8FAFC" : "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            color: corDoEstado(st),
+                            textAlign: "left",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: corDoEstado(st),
+                              flexShrink: 0,
+                            }}
+                          />
+                          {st}
+                        </button>
+                      ))}
                   </span>
                 </>
               )}

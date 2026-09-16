@@ -12,6 +12,7 @@
 // Desligado por padrao. Um card so entra quando alguem liga.
 
 import type { DashboardState, Item, Comentario } from "@/lib/dashboardTypes";
+import { globalDeQualquerArea } from "@/lib/etapas";
 
 /** Campo do item que liga o acompanhamento. */
 export const CAMPO_ACOMPANHAMENTO = "acompanhamentoSemanal";
@@ -73,7 +74,9 @@ function statusDoItem(item: Item): string {
 /** Monta o texto do acompanhamento. Devolve null quando não há o que dizer. */
 export function textoAcompanhamento(item: Item, agora: Date): string | null {
   const status = statusDoItem(item);
-  if (status === "Finalizado") return null;
+  // "Indeferida" no INPI equivale a Finalizado: sem isto, um processo negado
+  // continuaria recebendo o comentario semanal para sempre.
+  if (globalDeQualquerArea(status) === "Finalizado") return null;
 
   const partes = [`Status: ${status}`];
 

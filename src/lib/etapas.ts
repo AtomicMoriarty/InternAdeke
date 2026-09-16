@@ -49,6 +49,12 @@ export type Etapa = {
   cor: string;
   /** O que a etapa quer dizer, para quem nunca mexeu com INPI. */
   ajuda?: string;
+  /**
+   * A etapa afirma um fato que só um terceiro decide, e por isso ninguém cai
+   * nela sem querer. Deferida e Indeferida são decisões do INPI: um arrasto no
+   * Quadro Geral não pode declarar que a marca foi negada.
+   */
+  soManual?: boolean;
 };
 
 /**
@@ -113,12 +119,14 @@ const INPI: Etapa[] = [
     equivale: "Monitoramento",
     cor: "#10B981",
     ajuda: "Concedida. Continua no radar pela vigência e pela renovação",
+    soManual: true,
   },
   {
     nome: "Indeferida",
     equivale: "Finalizado",
     cor: "#78716C",
     ajuda: "Negada e sem recurso pendente",
+    soManual: true,
   },
   {
     nome: "Suspensos",
@@ -227,6 +235,46 @@ export function etapaDaLista(areaId: string, nomeDaLista: string): string | null
   // uma etapa de nome curto não engula qualquer lista.
   const dentro = etapas.find((e) => limpo(e.nome).length >= 5 && alvo.includes(limpo(e.nome)));
   return dentro?.nome || null;
+}
+
+/**
+ * A cor de um estado qualquer, seja coluna global ou etapa de área.
+ *
+ * Existe porque quem pinta uma barra ou um selo raramente sabe de que área o
+ * card é: indexar COLUMN_COLORS direto devolvia undefined para toda etapa do
+ * INPI, e o fallback cinza é justamente a cor de "A Fazer" — uma marca em
+ * exame de mérito aparecia igual a uma que ninguém começou.
+ */
+export function corDoEstado(estado?: string): string {
+  if (!estado) return COLUMN_COLORS["A Fazer"];
+  if ((KANBAN_COLUMNS as readonly string[]).includes(estado))
+    return COLUMN_COLORS[estado as KanbanStatus];
+  for (const etapas of Object.values(POR_AREA)) {
+    const achada = etapas.find((e) => e.nome === estado);
+    if (achada) return achada.cor;
+  }
+  return COLUMN_COLORS["A Fazer"];
+}
+
+/**
+ * Para que etapa desta área um card vai, ao ser solto numa coluna global.
+ *
+ * Devolve null quando a resposta não é única, e é aí que mora o perigo: no
+ * Quadro Geral em "Todos" as colunas são as sete, e soltar ali um card do INPI
+ * gravaria a coluna por cima da etapa. "Exame de mérito" viraria "Pendência
+ * Cliente" — que não corresponde a etapa nenhuma do INPI — e o card voltaria
+ * para o começo do processo, como se a marca nunca tivesse sido protocolada.
+ * Pior: soltar em "Finalizado" marcaria a marca como INDEFERIDA, um fato
+ * jurídico que ninguém afirmou.
+ *
+ * Com mais de uma etapa possível (Monitoramento tem quatro no INPI) também não
+ * dá para escolher por conta própria: exame formal, oposição e exame de mérito
+ * são fases diferentes do mesmo processo.
+ */
+export function etapaAoSoltarNaColuna(areaId: string, coluna: KanbanStatus): string | null {
+  if (!temEtapasProprias(areaId)) return coluna;
+  const candidatas = etapasDaArea(areaId).filter((e) => e.equivale === coluna && !e.soManual);
+  return candidatas.length === 1 ? candidatas[0].nome : null;
 }
 
 /** O estado antigo de cinco valores, que algumas telas ainda leem. */

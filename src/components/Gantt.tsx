@@ -4,6 +4,7 @@ import { CalendarRange, AlertTriangle, Inbox } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
+import { corDoEstado } from "@/lib/etapas";
 import { MODULOS } from "@/lib/areas";
 import { montarGantt, posicaoDaBarra, marcasDeMes, diasEntre } from "@/lib/gantt";
 
@@ -216,7 +217,10 @@ export default function Gantt() {
           <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
             {barras.map((b, idx) => {
               const pos = posicaoDaBarra(b, g.de, g.totalDias);
-              const cor = b.atrasado ? "#DC2626" : COLUMN_COLORS[b.item.status] || "#64748B";
+              // Pela etapa, nao pela coluna: sem isso toda marca do INPI saia
+              // cinza, a mesma cor de "A Fazer", e a barra perdia o unico sinal
+              // de estado que ela tem.
+              const cor = b.atrasado ? "#DC2626" : corDoEstado(b.item.etapa || b.item.status);
               const resps = (b.item.responsaveis || [])
                 .map((id) => profiles.find((p) => p.id === id))
                 .filter(Boolean);

@@ -37,6 +37,15 @@ export type FlatCard = {
   etapa: string;
   /** Rótulos das etiquetas, para a busca do quadro achar por "URGENTE". */
   etiquetas: string[];
+  /**
+   * Há quantos dias o card não muda de estado, ou null se nunca mudou.
+   *
+   * A tela "Eu" já lia este campo para mostrar o selo "12d parado", mas ele
+   * nunca foi produzido aqui: `undefined >= 7` é falso, então o aviso nunca
+   * aparecia. Com 303 dos 481 cards sem responsável e quase nenhum prazo, é
+   * justamente o sinal que sobra para saber o que está encalhado.
+   */
+  diasNoStatus: number | null;
   notasCount: number;
   prazo: string; // ISO date or ""
   progresso: number; // 0-100
@@ -53,6 +62,14 @@ export const MODULO_COLOR: Record<string, string> = {
   Societário: "#6366F1",
   Comercial: "#EC4899",
 };
+
+function diasParados(item: Item, agora: Date): number | null {
+  const desde = item.statusChangedAt || item.criadoEm;
+  if (!desde) return null;
+  const t = new Date(String(desde)).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((agora.getTime() - t) / 86400000));
+}
 
 function rotulos(item: Item): string[] {
   return Array.isArray(item.etiquetas)
@@ -83,7 +100,7 @@ function deriveKanbanStatus(item: Item, areaId = ""): KanbanStatus {
   return "A Fazer";
 }
 
-export function flattenDashboard(data: DashboardState | null): FlatCard[] {
+export function flattenDashboard(data: DashboardState | null, agora = new Date()): FlatCard[] {
   if (!data?.areas) return [];
   const cards: FlatCard[] = [];
   for (const area of data.areas) {
@@ -118,6 +135,7 @@ export function flattenDashboard(data: DashboardState | null): FlatCard[] {
             responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
             etapa: etapaDoItem(item, area.id),
             etiquetas: rotulos(item),
+            diasNoStatus: diasParados(item, agora),
             notasCount: Array.isArray(item.notas) ? item.notas.length : 0,
             prazo: item.prazo || "",
             progresso,
@@ -157,6 +175,7 @@ export function flattenDashboard(data: DashboardState | null): FlatCard[] {
         responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
         etapa: deriveKanbanStatus(item),
         etiquetas: rotulos(item),
+        diasNoStatus: diasParados(item, agora),
         notasCount: Array.isArray(item.notas) ? item.notas.length : 0,
         prazo: item.prazo || "",
         progresso,

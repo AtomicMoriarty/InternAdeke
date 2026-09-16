@@ -1,5 +1,6 @@
 // Cálculos dos relatórios. Separado da tela para poder ser testado sozinho.
 import { moduloOf, MODULO_PRODUTOS } from "@/lib/areas";
+import { globalDeQualquerArea } from "@/lib/etapas";
 import type { DashboardState } from "@/lib/dashboardTypes";
 
 export type Transicao = { de: string; para: string; em: string };
@@ -13,7 +14,10 @@ export type ItemPlano = {
   planoNome: string;
   itemId: string;
   itemNome: string;
+  /** Sempre uma das sete colunas globais, para somar e comparar. */
   status: string;
+  /** O que o card mostra na area: a etapa do INPI, ou a propria coluna. */
+  etapa: string;
   responsaveis: string[];
   prazo: string; // DD/MM/AAAA
   dataInicio: string; // DD/MM/AAAA
@@ -69,7 +73,11 @@ export function achatarItens(data: DashboardState | null): ItemPlano[] {
             planoNome: plano.name,
             itemId: item.id,
             itemNome: item.name,
-            status: item.kanbanStatus || "A Fazer",
+            // status e sempre uma das sete colunas: os relatorios somam,
+            // comparam com "Finalizado" e pintam por ela. A etapa da area
+            // ("Exame de mérito") vai separada, para quem quiser mostrar a fase.
+            status: globalDeQualquerArea(item.kanbanStatus as string) || "A Fazer",
+            etapa: String(item.kanbanStatus || "A Fazer"),
             responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
             prazo: item.prazo || "",
             dataInicio: item.dataInicio || "",
@@ -97,7 +105,8 @@ export function achatarItens(data: DashboardState | null): ItemPlano[] {
         planoNome: prod.name,
         itemId: item.id,
         itemNome: item.name,
-        status: item.kanbanStatus || "A Fazer",
+        status: globalDeQualquerArea(item.kanbanStatus as string) || "A Fazer",
+        etapa: String(item.kanbanStatus || "A Fazer"),
         responsaveis: Array.isArray(item.responsaveis) ? item.responsaveis : [],
         prazo: item.prazo || "",
         dataInicio: item.dataInicio || "",

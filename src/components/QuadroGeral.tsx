@@ -29,7 +29,7 @@ import { aplicarEmLote, descreverAcao, type AcaoEmLote } from "@/lib/edicaoEmLot
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import { MODULOS, ALL_MODULES, allowedModulesFor, AREAS } from "@/lib/areas";
-import { etapasDaArea, temEtapasProprias, type Etapa } from "@/lib/etapas";
+import { etapasDaArea, temEtapasProprias, etapaAoSoltarNaColuna, type Etapa } from "@/lib/etapas";
 
 type Filters = {
   modulo: string; // rotulo do modulo, ou "ambos" para todos
@@ -127,6 +127,8 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   }, [currentUser, filters, setFilters]);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<string | null>(null);
+  /** Aviso de quando um arrasto foi recusado, para não parecer que travou. */
+  const [recusa, setRecusa] = useState("");
   const [modalItem, setModalItem] = useState<{
     areaId: string;
     clienteId: string;
@@ -192,8 +194,15 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   }, [filtered, colunas, areaDasEtapas]);
 
   // Trocar de área troca as colunas, e um status escolhido na área anterior
-  // pode não existir aqui. Nesse caso o filtro é ignorado em vez de esvaziar o
-  // quadro sem explicação.
+  // não existe aqui. Antes o filtro continuava valendo invisível: o quadro
+  // zerava, o botão dizia "Status · 1" e a lista não mostrava nada marcado
+  // para desmarcar. Agora a seleção órfã é descartada de verdade.
+  useEffect(() => {
+    if (!filters.status.length) return;
+    const validos = filters.status.filter((s) => colunas.some((e) => e.nome === s));
+    if (validos.length !== filters.status.length) setFilters({ status: validos });
+  }, [colunas, filters.status, setFilters]);
+
   const visibleCols = useMemo(() => {
     const escolhidas = colunas.filter((e) => filters.status.includes(e.nome));
     return escolhidas.length ? escolhidas : colunas;
@@ -201,13 +210,32 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
 
   function moveCard(card: FlatCard, newStatus: string) {
     if (chaveDaColuna(card) === newStatus) return;
+
+    // Card de área com etapas próprias, solto numa das sete colunas globais.
+    // Gravar a coluna por cima apagaria em que fase do processo ele está: uma
+    // marca em "Exame de mérito" voltaria para o começo, e soltar em
+    // "Finalizado" a marcaria como indeferida. Quando a coluna não aponta para
+    // uma etapa única, o card fica onde está e a tela diz por quê.
+    const destino = areaDasEtapas
+      ? newStatus
+      : etapaAoSoltarNaColuna(card.areaId, newStatus as KanbanStatus);
+    if (!destino) {
+      const area = AREAS.find((a) => a.id === card.areaId);
+      setRecusa(
+        `"${card.itemNome}" anda pelas etapas de ${area?.name || card.modulo}. ` +
+          `Filtre o quadro em ${area?.modulo || card.modulo} para movê-lo.`,
+      );
+      return;
+    }
+    const newStatusFinal = destino;
+
     update((prev: DashboardState) => {
-      const next = setItemKanbanStatus(prev, card, newStatus);
+      const next = setItemKanbanStatus(prev, card, newStatusFinal);
       return next;
     });
     emitMudancaStatus({
       responsibleIds: card.responsaveis || [],
-      novoStatus: newStatus,
+      novoStatus: newStatusFinal,
       ctx: {
         cliente_id: card.clienteId,
         cliente_nome: card.clienteNome,
@@ -218,7 +246,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
         item_nome: card.itemNome,
         autor_id: currentUser?.id || null,
         autor_nome: currentUser?.email || "sistema",
-        trecho: `Status alterado de "${card.kanbanStatus}" para "${newStatus}"`,
+        trecho: `Status alterado de "${chaveDaColuna(card)}" para "${newStatusFinal}"`,
       },
     });
   }
@@ -283,7 +311,10 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
     // Mudanca de status avisa os responsaveis, igual ao arrastar um card
     if (acao.tipo === "status") {
       for (const card of alvos) {
-        if (card.kanbanStatus === acao.status) continue;
+        // Pela etapa que o card mostra, nao pela coluna global: no INPI as duas
+        // nunca sao iguais, e sem isso quem ja estava na etapa escolhida
+        // recebia um aviso de mudanca que nao aconteceu.
+        if (chaveDaColuna(card) === acao.status) continue;
         emitMudancaStatus({
           responsibleIds: card.responsaveis || [],
           novoStatus: acao.status,
@@ -297,7 +328,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
             item_nome: card.itemNome,
             autor_id: currentUser?.id || null,
             autor_nome: currentProfile?.display_name || currentUser?.email || "sistema",
-            trecho: `Status alterado de "${card.kanbanStatus}" para "${acao.status}" (edição em lote)`,
+            trecho: `Status alterado de "${chaveDaColuna(card)}" para "${acao.status}" (edição em lote)`,
           },
         });
       }
@@ -442,6 +473,49 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
           }}
         >
           Carregando…
+        </div>
+      )}
+
+      {recusa && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 22,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 400,
+            background: "#0F172A",
+            color: "#fff",
+            borderRadius: 12,
+            padding: "12px 16px",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "Outfit, sans-serif",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: "min(560px, calc(100vw - 32px))",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.3)",
+          }}
+        >
+          <span style={{ lineHeight: 1.5 }}>{recusa}</span>
+          <button
+            onClick={() => setRecusa("")}
+            style={{
+              background: "#1E293B",
+              border: "none",
+              borderRadius: 8,
+              color: "#fff",
+              padding: "6px 10px",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            Entendi
+          </button>
         </div>
       )}
 
@@ -1448,7 +1522,12 @@ function filterCards(cards: FlatCard[], f: Filters): FlatCard[] {
     if (f.planos.length && !f.planos.includes(chaveDeNome(c.planoNome))) return false;
     if (f.responsaveis.length && !c.responsaveis.some((id) => f.responsaveis.includes(id)))
       return false;
-    if (f.status.length && !f.status.includes(c.kanbanStatus)) return false;
+    // Casa com os dois: em "Todos" a lista oferece as sete colunas, e dentro
+    // de uma area com etapas proprias ela oferece as etapas. Comparar so com a
+    // coluna global deixava o filtro do INPI sempre vazio, porque nenhum nome
+    // de etapa e igual a um nome de coluna — nem "Suspensos" a "Suspenso".
+    if (f.status.length && !f.status.includes(c.kanbanStatus) && !f.status.includes(c.etapa))
+      return false;
     if (f.prazo !== "todos") {
       if (!c.prazo) return false;
       const ps = prazoStatus(c.prazo);

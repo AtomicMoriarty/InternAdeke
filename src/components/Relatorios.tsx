@@ -98,7 +98,17 @@ export default function Relatorios() {
   function exportarItens() {
     // Uma coluna por etapa. É assim que dá para cruzar em planilha quanto tempo
     // cada card passou em cada fase — a média do painel não mostra isso.
-    const etapas = KANBAN_COLUMNS as readonly string[];
+    //
+    // As sete colunas mais as etapas que os cards realmente têm. Fixando só as
+    // sete, as 24 marcas do INPI saíam com todas as colunas de tempo vazias:
+    // o histórico delas guarda "Exame de mérito", que não é nenhuma das sete,
+    // e a planilha existe justamente para medir tempo de fase.
+    const etapas = [
+      ...KANBAN_COLUMNS,
+      ...[...new Set(itens.flatMap((i) => (i.statusHistory || []).map((t) => t.para)))]
+        .filter((e) => e && !(KANBAN_COLUMNS as readonly string[]).includes(e))
+        .sort(),
+    ] as readonly string[];
     baixarCSV(
       `itens-${hojeArquivo()}.csv`,
       paraCSV(
@@ -124,7 +134,7 @@ export default function Relatorios() {
             i.clienteNome,
             i.planoNome,
             i.itemNome,
-            i.status,
+            i.etapa || i.status,
             i.responsaveis.map(nome).join(", "),
             i.dataInicio,
             i.prazo,
