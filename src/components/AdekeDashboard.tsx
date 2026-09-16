@@ -67,6 +67,13 @@ import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/co
 import DiretorioClientes from "@/components/DiretorioClientes";
 import { renomearPlanoImportado } from "@/lib/importTrello";
 import {
+  etapasDaArea,
+  etapaDoItem,
+  equivalenteGlobal,
+  globalDeQualquerArea,
+  statusLegado,
+} from "@/lib/etapas";
+import {
   clientesAtivos,
   clienteNovo,
   salvarCliente,
@@ -173,6 +180,11 @@ const STATUS_ORDER = KANBAN_COLUMNS_DASH as unknown as string[];
 /** Derives a unified KanbanStatus from an item, handling legacy status values */
 function getItemKanbanStatus(item: Item | undefined | null): string {
   if (item.kanbanStatus && STATUS_META[item.kanbanStatus]) return item.kanbanStatus;
+  // Etapa de área — "Exame de mérito", "Indeferida" — vira a coluna global
+  // equivalente. Sem isto, todo lugar que pergunta "está finalizado?" erraria
+  // com os cards do INPI.
+  const daArea = globalDeQualquerArea(item.kanbanStatus as string);
+  if (daArea) return daArea;
   const s = item.status;
   if (s === "Concluído") return "Finalizado";
   if (s === "Em andamento") return "Em Andamento";
@@ -998,10 +1010,28 @@ function Bar2({ pct, color }) {
   );
 }
 
-function StatusPill({ status, onChange }: { status: string; onChange: (s: string) => void }) {
+/**
+ * O seletor de estado de um card.
+ *
+ * Recebe a área porque o INPI anda pelas etapas do processo, e ali o menu tem
+ * que oferecer "Exame de mérito" e "Prazo recursal", não as sete genéricas.
+ */
+function StatusPill({
+  status,
+  areaId = "",
+  onChange,
+}: {
+  status: string;
+  areaId?: string;
+  onChange: (s: string) => void;
+}) {
   const [open, setOpen] = useState(false);
-  const resolved = STATUS_META[status] ? status : getItemKanbanStatus({ status });
-  const m = STATUS_META[resolved] || STATUS_META["A Fazer"];
+  const etapas = etapasDaArea(areaId);
+  const daArea = etapas.find((e) => e.nome === status);
+  const resolved = daArea ? status : STATUS_META[status] ? status : getItemKanbanStatus({ status });
+  const m = daArea
+    ? { color: daArea.cor, bg: `${daArea.cor}14`, icon: STATUS_META[daArea.equivale].icon }
+    : STATUS_META[resolved] || STATUS_META["A Fazer"];
   const Icon = m.icon;
   return (
     <div style={{ position: "relative" }}>
@@ -1042,12 +1072,18 @@ function StatusPill({ status, onChange }: { status: string; onChange: (s: string
             boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
           }}
         >
-          {STATUS_ORDER.map((s) => {
-            const sm = STATUS_META[s];
+          {etapas.map((etapa) => {
+            const s = etapa.nome;
+            const sm = {
+              color: etapa.cor,
+              bg: `${etapa.cor}14`,
+              icon: STATUS_META[etapa.equivale].icon,
+            };
             const SI = sm.icon;
             return (
               <button
                 key={s}
+                title={etapa.ajuda}
                 onClick={() => {
                   onChange(s);
                   setOpen(false);
@@ -3472,6 +3508,9 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
 
   function setItemStatus(item, val) {
     updateItem(item.id, "kanbanStatus", val);
+    // O campo antigo de cinco valores acompanha: quem lê status não conhece
+    // "Exame de mérito".
+    updateItem(item.id, "status", statusLegado(equivalenteGlobal(areaId, val) || "Em Andamento"));
     emitMudancaStatus({
       responsibleIds: item.responsaveis || [],
       novoStatus: val,
@@ -4000,7 +4039,8 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <StatusPill
-                    status={getItemKanbanStatus(item)}
+                    status={etapaDoItem(item, areaId)}
+                    areaId={areaId}
                     onChange={(val) => setItemStatus(item, val)}
                   />
                   {getItemKanbanStatus(item) === "Suspenso" && (

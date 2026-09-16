@@ -16,6 +16,7 @@
 
 import type { DashboardState, Area, Cliente, Item, Comentario } from "@/lib/dashboardTypes";
 import { KANBAN_COLUMNS, type KanbanStatus } from "@/lib/flattenItems";
+import { etapaDaLista, etapasDaArea, equivalenteGlobal, temEtapasProprias } from "@/lib/etapas";
 import { AREAS } from "@/lib/areas";
 import {
   CAMPO_VINCULO,
@@ -667,7 +668,7 @@ export type PlanoImportacao = {
    * Lista sem coluna aqui e sem coluna reconhecida fica de fora: um card
    * precisa cair em alguma das sete colunas para existir no quadro.
    */
-  colunaPorLista: Record<string, KanbanStatus>;
+  colunaPorLista: Record<string, string>;
   incluirFinalizados: boolean;
   incluirArquivados: boolean;
   /**
@@ -801,8 +802,23 @@ export function casarComEscritorio(
  *
  * Null quer dizer que a lista não virou coluna nenhuma, e aí o card não entra.
  */
-export function colunaDoCartao(c: CartaoLido, plano: PlanoImportacao): KanbanStatus | null {
-  return plano.colunaPorLista[c.lista] || c.coluna || null;
+export function colunaDoCartao(c: CartaoLido, plano: PlanoImportacao): string | null {
+  const escolhida = plano.colunaPorLista[c.lista];
+  if (escolhida) return escolhida;
+
+  // A área de destino pode ter etapas próprias. O quadro de Marcas do Trello
+  // tem listas que são exatamente as etapas do INPI escritas de outro jeito —
+  // "Exame Formal", "Deferidas" — e casá-las poupa mapear cinco listas à mão.
+  const area = plano.destino === DESTINO_AUTO ? "" : plano.destino;
+  if (area && temEtapasProprias(area)) {
+    const pelaEtapa = etapaDaLista(area, c.lista);
+    if (pelaEtapa) return pelaEtapa;
+    // Lista que virou coluna global pelo nome ("A FAZER") entra na etapa
+    // equivalente, em vez de ficar de fora por não ser uma etapa do INPI.
+    if (c.coluna) return etapasDaArea(area).find((e) => e.equivale === c.coluna)?.nome || null;
+    return null;
+  }
+  return c.coluna || null;
 }
 
 export function clienteDoCartao(c: CartaoLido, plano: PlanoImportacao): string | null {
@@ -827,7 +843,8 @@ export function cartoesSelecionados(leitura: LeituraTrello, plano: PlanoImportac
     const coluna = colunaDoCartao(c, plano);
     if (!coluna) return false;
     if (c.arquivado && !plano.incluirArquivados) return false;
-    if (coluna === "Finalizado" && !plano.incluirFinalizados) return false;
+    const area = plano.destino === DESTINO_AUTO ? "" : plano.destino;
+    if (equivalenteGlobal(area, coluna) === "Finalizado" && !plano.incluirFinalizados) return false;
     // Desmarcar uma empresa reconhecida é dizer "não traga esse cliente", e os
     // cards dela ficam de fora. Desmarcar uma sugestão é outra coisa: é dizer
     // "isso não é empresa", e o card continua entrando, como trabalho interno.

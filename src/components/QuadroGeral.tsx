@@ -28,7 +28,8 @@ import { emitMudancaStatus, emitAtribuicao } from "@/lib/notifications";
 import { aplicarEmLote, descreverAcao, type AcaoEmLote } from "@/lib/edicaoEmLote";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import type { DashboardState } from "@/lib/dashboardTypes";
-import { MODULOS, ALL_MODULES, allowedModulesFor } from "@/lib/areas";
+import { MODULOS, ALL_MODULES, allowedModulesFor, AREAS } from "@/lib/areas";
+import { etapasDaArea, temEtapasProprias, type Etapa } from "@/lib/etapas";
 
 type Filters = {
   modulo: string; // rotulo do modulo, ou "ambos" para todos
@@ -125,7 +126,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
     if (padrao && !semFiltro(padrao)) setFilters(padrao);
   }, [currentUser, filters, setFilters]);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
-  const [hoverCol, setHoverCol] = useState<KanbanStatus | null>(null);
+  const [hoverCol, setHoverCol] = useState<string | null>(null);
   const [modalItem, setModalItem] = useState<{
     areaId: string;
     clienteId: string;
@@ -168,19 +169,38 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
 
   const filtered = useMemo(() => filterCards(allCards, filters), [allCards, filters]);
 
+  // Filtrado numa área só que tem etapas próprias, o quadro mostra as etapas
+  // dela. Misturando áreas não dá: "Exame de mérito" não quer dizer nada para
+  // um card de Societário, e a língua comum são as sete colunas.
+  const areaDasEtapas = useMemo(() => {
+    if (filters.modulo === "ambos") return "";
+    const area = AREAS.find((a) => a.modulo === filters.modulo);
+    return area && temEtapasProprias(area.id) ? area.id : "";
+  }, [filters.modulo]);
+
+  const colunas: Etapa[] = useMemo(() => etapasDaArea(areaDasEtapas), [areaDasEtapas]);
+  const chaveDaColuna = (c: FlatCard) => (areaDasEtapas ? c.etapa : c.kanbanStatus);
+
   const cardsByStatus = useMemo(() => {
     const byStatus: Record<string, FlatCard[]> = {};
-    for (const s of KANBAN_COLUMNS) byStatus[s] = [];
-    for (const c of filtered) (byStatus[c.kanbanStatus] || (byStatus[c.kanbanStatus] = [])).push(c);
+    for (const e of colunas) byStatus[e.nome] = [];
+    for (const c of filtered) {
+      const k = areaDasEtapas ? c.etapa : c.kanbanStatus;
+      (byStatus[k] || (byStatus[k] = [])).push(c);
+    }
     return byStatus;
-  }, [filtered]);
+  }, [filtered, colunas, areaDasEtapas]);
 
-  const visibleCols = filters.status.length
-    ? (filters.status as KanbanStatus[])
-    : (KANBAN_COLUMNS as readonly KanbanStatus[]);
+  // Trocar de área troca as colunas, e um status escolhido na área anterior
+  // pode não existir aqui. Nesse caso o filtro é ignorado em vez de esvaziar o
+  // quadro sem explicação.
+  const visibleCols = useMemo(() => {
+    const escolhidas = colunas.filter((e) => filters.status.includes(e.nome));
+    return escolhidas.length ? escolhidas : colunas;
+  }, [colunas, filters.status]);
 
-  function moveCard(card: FlatCard, newStatus: KanbanStatus) {
-    if (card.kanbanStatus === newStatus) return;
+  function moveCard(card: FlatCard, newStatus: string) {
+    if (chaveDaColuna(card) === newStatus) return;
     update((prev: DashboardState) => {
       const next = setItemKanbanStatus(prev, card, newStatus);
       return next;
@@ -301,6 +321,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
         filters={filters}
         setFilters={setFilters}
         opts={opts}
+        colunas={colunas}
         userId={currentUser?.id}
         profiles={profiles}
         counts={{ total: filtered.length, all: allCards.length }}
@@ -318,13 +339,15 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
           minHeight: "calc(100vh - 130px)",
         }}
       >
-        {visibleCols.map((status) => {
+        {visibleCols.map((etapa) => {
+          const status = etapa.nome;
           const list = cardsByStatus[status] || [];
-          const color = COLUMN_COLORS[status];
+          const color = etapa.cor;
           const isHover = hoverCol === status;
           return (
             <div
               key={status}
+              title={etapa.ajuda}
               onDragOver={(e) => {
                 e.preventDefault();
                 setHoverCol(status);
@@ -427,6 +450,8 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
           quantos={cardsSelecionados.length}
           totalVisivel={filtered.length}
           profiles={profiles}
+          colunas={colunas}
+          areaId={areaDasEtapas}
           onSelecionarTodos={() => setSelecionados(new Set(filtered.map((c) => c.itemId)))}
           onLimpar={() => setSelecionados(new Set())}
           onSair={sairDoModoSelecao}
@@ -677,6 +702,7 @@ function FiltersBar({
   opts,
   profiles,
   counts,
+  colunas,
   userId,
   // O pai já passava as duas, mas elas não estavam declaradas aqui e o botão
   // nunca chegou a ser desenhado — a edição em lote existia sem porta de entrada.
@@ -688,6 +714,8 @@ function FiltersBar({
   opts: { clientes: { id: string; name: string }[]; planos: { id: string; name: string }[] };
   profiles: Profile[];
   counts: { total: number; all: number };
+  /** As colunas do quadro agora: as sete, ou as etapas da área filtrada. */
+  colunas: Etapa[];
   userId?: string;
   modoSelecao?: boolean;
   onToggleSelecao?: () => void;
@@ -825,7 +853,7 @@ function FiltersBar({
 
       <MultiPicker
         label="Status"
-        items={KANBAN_COLUMNS.map((s) => ({ id: s, label: s }))}
+        items={colunas.map((e) => ({ id: e.nome, label: e.nome, sub: e.ajuda }))}
         value={filters.status}
         onChange={(v) => setFilters({ status: v })}
       />
@@ -1081,6 +1109,8 @@ function BarraDeLote({
   quantos,
   totalVisivel,
   profiles,
+  colunas,
+  areaId,
   onSelecionarTodos,
   onLimpar,
   onSair,
@@ -1089,6 +1119,9 @@ function BarraDeLote({
   quantos: number;
   totalVisivel: number;
   profiles: Profile[];
+  colunas: Etapa[];
+  /** A área filtrada, quando as colunas são as etapas dela. */
+  areaId: string;
   onSelecionarTodos: () => void;
   onLimpar: () => void;
   onSair: () => void;
@@ -1158,25 +1191,25 @@ function BarraDeLote({
         </button>
         {menu === "status" && (
           <div style={popLote}>
-            {KANBAN_COLUMNS.map((st) => (
+            {colunas.map((e) => (
               <button
-                key={st}
+                key={e.nome}
                 onClick={() => {
-                  onAcao({ tipo: "status", status: st });
+                  onAcao({ tipo: "status", status: e.nome, areaId });
                   fechar();
                 }}
-                style={{ ...itemPop, color: COLUMN_COLORS[st] }}
+                style={{ ...itemPop, color: e.cor }}
               >
                 <span
                   style={{
                     width: 7,
                     height: 7,
                     borderRadius: "50%",
-                    background: COLUMN_COLORS[st],
+                    background: e.cor,
                     flexShrink: 0,
                   }}
                 />
-                {st}
+                {e.nome}
               </button>
             ))}
           </div>

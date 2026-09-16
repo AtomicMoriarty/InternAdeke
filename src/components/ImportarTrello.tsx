@@ -33,7 +33,7 @@ import {
 import { registrarDistintos } from "@/lib/diretorioClientes";
 import { useProfiles } from "@/lib/profiles";
 import { areaById } from "@/lib/areas";
-import { KANBAN_COLUMNS, type KanbanStatus } from "@/lib/flattenItems";
+import { etapasDaArea } from "@/lib/etapas";
 import type { DashboardState } from "@/lib/dashboardTypes";
 
 type Props = {
@@ -65,10 +65,23 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
     () => (leitura ? gruposSemelhantes(leitura, data) : []),
     [leitura, data],
   );
-  const semColuna = useMemo(
-    () => (leitura ? leitura.listas.filter((lst) => !lst.coluna) : []),
-    [leitura],
+  // As colunas da área escolhida: no INPI são as etapas do processo.
+  const colunasDoDestino = useMemo(
+    () =>
+      etapasDaArea(plano && plano.destino !== DESTINO_AUTO ? plano.destino : "").map((e) => e.nome),
+    [plano],
   );
+
+  const semColuna = useMemo(() => {
+    if (!leitura || !plano) return [];
+    // Pergunta de verdade: com este destino, esta lista cai em alguma coluna?
+    // No INPI, "Exame Formal" resolve sozinha e não precisa ser perguntada.
+    return leitura.listas.filter(
+      (lst) =>
+        !colunaDoCartao({ lista: lst.nome, coluna: lst.coluna } as never, plano) &&
+        !plano.colunaPorLista[lst.nome],
+    );
+  }, [leitura, plano]);
   const amostra = useMemo(
     () => (leitura && plano ? cartoesSelecionados(leitura, plano).slice(0, 8) : []),
     [leitura, plano],
@@ -189,14 +202,14 @@ export default function ImportarTrello({ data, setData, onFechar }: Props) {
                       value={plano.colunaPorLista[lst.nome] || ""}
                       onChange={(e) => {
                         const mapa = { ...plano.colunaPorLista };
-                        if (e.target.value) mapa[lst.nome] = e.target.value as KanbanStatus;
+                        if (e.target.value) mapa[lst.nome] = e.target.value;
                         else delete mapa[lst.nome];
                         mexer({ colunaPorLista: mapa });
                       }}
                       style={{ ...campo, minWidth: 190 }}
                     >
                       <option value="">Não trazer</option>
-                      {KANBAN_COLUMNS.map((col) => (
+                      {colunasDoDestino.map((col) => (
                         <option key={col} value={col}>
                           {col}
                         </option>

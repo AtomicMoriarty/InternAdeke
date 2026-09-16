@@ -5,7 +5,8 @@
 // os dois, então tudo aqui trabalha sobre a lista plana de cards e resolve o
 // caminho de cada um na hora de gravar.
 
-import type { FlatCard, KanbanStatus } from "@/lib/flattenItems";
+import type { FlatCard } from "@/lib/flattenItems";
+import { equivalenteGlobal, statusLegado } from "@/lib/etapas";
 import type { DashboardState, Item } from "@/lib/dashboardTypes";
 
 export const PRODUTOS_AREA_ID = "produtos";
@@ -17,7 +18,9 @@ function uid() {
 }
 
 export type AcaoEmLote =
-  | { tipo: "status"; status: KanbanStatus }
+  // O status pode ser uma das sete colunas ou uma etapa da área, como
+  // "Exame de mérito" no INPI. Por isso string, e não só as sete.
+  | { tipo: "status"; status: string; areaId?: string }
   | { tipo: "responsaveis"; ids: string[]; modo: "adicionar" | "substituir" | "remover" }
   | { tipo: "comentario"; texto: string; autorId: string | null; autorNome: string }
   | { tipo: "prazo"; prazo: string }
@@ -32,7 +35,9 @@ function aplicarNoItem(item: Item, acao: AcaoEmLote, agora: Date): Item {
       const iso = agora.toISOString();
       return {
         ...item,
-        status: acao.status,
+        // status guarda sempre o formato antigo de cinco valores; a etapa vai
+        // em kanbanStatus, que é onde a área a procura.
+        status: statusLegado(equivalenteGlobal(acao.areaId || "", acao.status) || "Em Andamento"),
         kanbanStatus: acao.status,
         statusChangedAt: iso,
         statusHistory: [

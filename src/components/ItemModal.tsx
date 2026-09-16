@@ -85,26 +85,16 @@ import {
   TAMANHO_MAXIMO,
 } from "@/lib/anexos";
 
-const KANBAN_COLUMNS = [
-  "A Fazer",
-  "Em Andamento",
-  "Pendência Interna",
-  "Pendência Cliente",
-  "Monitoramento",
-  "Finalizado",
-  "Suspenso",
-] as const;
-type KanbanStatus = (typeof KANBAN_COLUMNS)[number];
-
-const STATUS_COLORS: Record<string, string> = {
-  "A Fazer": "#64748B",
-  "Em Andamento": "#3B82F6",
-  "Pendência Interna": "#F59E0B",
-  "Pendência Cliente": "#F97316",
-  Monitoramento: "#06B6D4",
-  Finalizado: "#10B981",
-  Suspenso: "#94A3B8",
-};
+// As colunas e as cores vêm de etapas.ts: no INPI o card anda pelas etapas do
+// processo, e o seletor tem que oferecer aquelas, não as sete genéricas.
+import {
+  etapasDaArea,
+  // Apelidado: "etapa" no comercial é o estágio do funil, e o nome já está
+  // tomado neste arquivo. Aqui é a coluna do card no quadro da área.
+  etapaDoItem as colunaDoCard,
+  equivalenteGlobal,
+  statusLegado,
+} from "@/lib/etapas";
 
 const ETIQUETA_COLORS = [
   "#EF4444",
@@ -372,8 +362,10 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   const modulo = ehProduto ? MODULO_PRODUTOS : moduloOf(areaId);
-  const kanbanStatus: KanbanStatus = item.kanbanStatus || "A Fazer";
-  const statusColor = STATUS_COLORS[kanbanStatus] || "#64748B";
+  const etapas = etapasDaArea(ehProduto ? "" : areaId);
+  const kanbanStatus = colunaDoCard(item, ehProduto ? "" : areaId);
+  const statusColor =
+    etapas.find((e) => e.nome === kanbanStatus)?.cor || COLUMN_COLORS[kanbanStatus] || "#64748B";
   const checklist: ItemChecklist[] = item.checklist || [];
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
@@ -471,19 +463,11 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     }));
   }
 
-  // Legacy status map so existing code that reads item.status still works
-  const LEGACY_STATUS_MAP: Record<KanbanStatus, string> = {
-    "A Fazer": "Não iniciado",
-    "Em Andamento": "Em andamento",
-    "Pendência Interna": "Planejamento",
-    "Pendência Cliente": "Pausado",
-    Monitoramento: "Em andamento",
-    Finalizado: "Concluído",
-    Suspenso: "Pausado",
-  };
-
-  function changeStatus(s: KanbanStatus) {
-    patchItem({ kanbanStatus: s, status: LEGACY_STATUS_MAP[s] });
+  function changeStatus(s: string) {
+    // status continua no formato antigo de cinco valores, para o código que
+    // ainda o lê; a etapa vai em kanbanStatus.
+    const global = equivalenteGlobal(ehProduto ? "" : areaId, s) || "Em Andamento";
+    patchItem({ kanbanStatus: s, status: statusLegado(global) });
     setShowStatusMenu(false);
     emitMudancaStatus({
       responsibleIds: item.responsaveis || [],
@@ -1024,11 +1008,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                       overflow: "hidden",
                     }}
                   >
-                    {KANBAN_COLUMNS.map((s) => {
-                      const sc = STATUS_COLORS[s];
+                    {etapas.map((etapa) => {
+                      const s = etapa.nome;
+                      const sc = etapa.cor;
                       return (
                         <button
                           key={s}
+                          title={etapa.ajuda}
                           onClick={() => changeStatus(s)}
                           style={{
                             display: "flex",
