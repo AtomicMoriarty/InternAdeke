@@ -1,6 +1,8 @@
 // @ts-nocheck
-import { useState, useRef, useEffect, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from "react";
+// O recharts e a maior biblioteca do projeto e so o grafico do Painel a usa.
+// Carregado sob demanda, ele sai do pacote que toda tela baixa.
+const GraficoStatus = lazy(() => import("@/components/GraficoStatus"));
 import {
   Shield,
   Lock,
@@ -66,6 +68,7 @@ import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 import DiretorioClientes from "@/components/DiretorioClientes";
 import { renomearPlanoImportado } from "@/lib/importTrello";
+import { semearDashboardState } from "@/lib/useDashboardState";
 import {
   etapasDaArea,
   etapaDoItem,
@@ -1435,36 +1438,9 @@ function Dashboard({ data, setData, nav, allowedModules = ALL_MODULES }) {
           >
             Distribuição por status
           </p>
-          <ResponsiveContainer width="100%" height={170}>
-            <BarChart
-              data={chartData}
-              barSize={22}
-              margin={{ top: 0, right: 0, left: -24, bottom: 0 }}
-            >
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "#94A3B8", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{
-                  background: "#F8FAFC",
-                  border: "1px solid #2a3550",
-                  borderRadius: 8,
-                  color: "#0F172A",
-                  fontSize: 11,
-                }}
-                cursor={{ fill: "#ffffff06" }}
-              />
-              <Bar dataKey="v" radius={[5, 5, 0, 0]}>
-                {chartData.map((e, i) => (
-                  <Cell key={i} fill={e.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<div style={{ height: 170 }} aria-label="Carregando o gráfico" />}>
+            <GraficoStatus dados={chartData} />
+          </Suspense>
         </div>
 
         <div
@@ -5695,6 +5671,9 @@ export default function App() {
     setDataState((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       dataRef.current = next;
+      // A loja compartilhada acompanha: sem isto, editar aqui e abrir um card
+      // mostraria o dado de antes da edicao.
+      semearDashboardState(next);
       return next;
     });
   };
@@ -5720,6 +5699,9 @@ export default function App() {
         );
         setDataState(reconciliado);
         dataRef.current = reconciliado;
+        // Entrega a mesma copia para o resto do app: sem isto, abrir um card
+        // daqui buscaria de novo a meia mega que acabou de chegar.
+        semearDashboardState(reconciliado);
         if (reconciliado !== row.data) {
           // quadros novos entraram: persiste para os demais usuarios
           lastSentJsonRef.current = JSON.stringify(reconciliado);
@@ -5758,6 +5740,7 @@ export default function App() {
           dataRef.current = newData;
           lastSentJsonRef.current = newJson;
           setDataState(newData);
+          semearDashboardState(newData);
         },
       )
       .subscribe();
