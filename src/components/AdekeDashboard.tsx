@@ -38,6 +38,7 @@ import {
   Handshake,
   Settings2,
   BarChart3,
+  ListChecks,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Item } from "@/lib/dashboardTypes";
@@ -67,6 +68,7 @@ import ReunioesComerciais from "@/components/ReunioesComerciais";
 import AjudanteComercial from "@/components/AjudanteComercial";
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 import DiretorioClientes from "@/components/DiretorioClientes";
+import Triagem from "@/components/Triagem";
 import { renomearPlanoImportado } from "@/lib/importTrello";
 import { semearDashboardState } from "@/lib/useDashboardState";
 import {
@@ -5529,6 +5531,13 @@ const NAV = [
     view: { page: "dashboard" },
   },
   {
+    id: "triagem",
+    label: "Triagem",
+    Icon: ListChecks,
+    color: "#F59E0B",
+    view: { page: "triagem" },
+  },
+  {
     id: "clientes",
     label: "Clientes",
     Icon: Building2,
@@ -5601,6 +5610,7 @@ function navActiveId(view) {
   if (view.page === "produtos" || view.page === "produto") return "produtos";
   if (view.page === "ajudante") return "ajudante";
   if (view.page === "clientes") return "clientes";
+  if (view.page === "triagem") return "triagem";
   return "";
 }
 
@@ -5615,6 +5625,8 @@ function canAccessView(view, allowedModules) {
   if (view.page === "ajudante") return allowedModules.includes("comercial");
   // O diretorio serve todas as areas: quem ve qualquer quadro, ve o cadastro.
   if (view.page === "clientes") return allowedModules.length > 0;
+  // A triagem so mostra card de area que a pessoa ja enxerga.
+  if (view.page === "triagem") return allowedModules.length > 0;
   return true;
 }
 
@@ -5635,6 +5647,9 @@ const QUADRO_DEFAULTS = {
 export default function App() {
   const [data, setDataState] = useState(INIT);
   const [view, setView] = useState({ page: "dashboard" });
+  // Card aberto a partir da Triagem: a lista de la atravessa areas, entao o
+  // modal precisa morar aqui em cima e nao dentro de um plano.
+  const [cardDaTriagem, setCardDaTriagem] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [dashTab, setDashTab] = useState("painel");
   const [quadroFilters, setQuadroFilters] = useState(QUADRO_DEFAULTS);
@@ -5645,6 +5660,7 @@ export default function App() {
   const visibleNav = NAV.filter(
     (item) =>
       item.id === "dashboard" ||
+      item.id === "triagem" ||
       allowedModules.includes(item.id) ||
       (item.id === "ajudante" && allowedModules.includes("comercial")) ||
       (item.id === "clientes" && allowedModules.length > 0),
@@ -6063,6 +6079,29 @@ export default function App() {
               )}
               {view.page === "ajudante" && allowedModules.includes("comercial") && (
                 <AjudanteComercial />
+              )}
+              {view.page === "triagem" && (
+                <Triagem
+                  data={data}
+                  setData={setData}
+                  abrirCard={(card) =>
+                    setCardDaTriagem({
+                      areaId: card.areaId,
+                      clienteId: card.clienteId,
+                      planoId: card.planoId,
+                      itemId: card.itemId,
+                    })
+                  }
+                />
+              )}
+              {cardDaTriagem && (
+                <ItemModal
+                  areaId={cardDaTriagem.areaId}
+                  clienteId={cardDaTriagem.clienteId}
+                  planoId={cardDaTriagem.planoId}
+                  itemId={cardDaTriagem.itemId}
+                  onClose={() => setCardDaTriagem(null)}
+                />
               )}
               {view.page === "clientes" && (
                 <DiretorioClientes
