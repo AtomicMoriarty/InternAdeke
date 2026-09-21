@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Clock,
   Edit3,
+  Home,
   LayoutGrid,
   MessageSquare,
   Pin,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/flattenItems";
 import { etapasDaArea, temEtapasProprias, corDoEstado } from "@/lib/etapas";
 import { parseBR } from "@/lib/relatorios";
+import { telaInicial, definirTelaInicial } from "@/lib/telaInicial";
 import {
   useNotifications,
   markRead,
@@ -334,7 +336,7 @@ function EuPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#F0F5FF", fontFamily: "Outfit, sans-serif" }}>
-      <TopBar displayName={displayName} />
+      <TopBar displayName={displayName} userId={currentUser?.id} />
       <main
         style={{ padding: "22px", display: "grid", gridTemplateColumns: "1.35fr 0.9fr", gap: 18 }}
       >
@@ -671,7 +673,8 @@ function EuPage() {
   );
 }
 
-function TopBar({ displayName }: { displayName: string }) {
+function TopBar({ displayName, userId }: { displayName: string; userId?: string }) {
+  const [comecaAqui, setComecaAqui] = useState(() => telaInicial(userId) === "eu");
   return (
     <div
       style={{
@@ -691,7 +694,31 @@ function TopBar({ displayName }: { displayName: string }) {
       </Link>
       <span style={{ fontSize: 14, fontWeight: 900 }}>Eu</span>
       <span style={{ fontSize: 11, opacity: 0.72 }}>{displayName}</span>
-      <Link to="/quadro" style={{ ...topLinkStyle, marginLeft: "auto" }}>
+      <button
+        onClick={() => {
+          const nova = comecaAqui ? "painel" : "eu";
+          if (userId) definirTelaInicial(userId, nova);
+          setComecaAqui(!comecaAqui);
+        }}
+        title={
+          comecaAqui
+            ? "Voltar a abrir o sistema no Painel"
+            : "Abrir o sistema nesta tela da próxima vez"
+        }
+        style={{
+          ...topLinkStyle,
+          marginLeft: "auto",
+          background: comecaAqui ? "#0DD3C5" : "transparent",
+          border: `1px solid ${comecaAqui ? "#0DD3C5" : "rgba(255,255,255,0.25)"}`,
+          borderRadius: 8,
+          padding: "5px 10px",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        <Home size={13} /> {comecaAqui ? "Começa aqui" : "Começar aqui"}
+      </button>
+      <Link to="/quadro" style={topLinkStyle}>
         <LayoutGrid size={14} /> Quadro Geral
       </Link>
     </div>

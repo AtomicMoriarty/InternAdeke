@@ -39,6 +39,7 @@ import {
   Settings2,
   BarChart3,
   ListChecks,
+  Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Item } from "@/lib/dashboardTypes";
@@ -5803,6 +5804,16 @@ export default function App() {
       if (!allowedModules.includes(areaId)) return;
       if (d.plano) setView({ page: "plano", areaId, clienteId: d.cliente, planoId: d.plano });
       else setView({ page: "cliente", areaId, clienteId: d.cliente });
+      // Veio da busca: abre o card em vez de so destaca-lo na lista.
+      if (d.abrir && d.item && d.plano) {
+        setCardDaTriagem({
+          areaId,
+          clienteId: d.cliente,
+          planoId: d.plano,
+          itemId: d.item,
+        });
+        return;
+      }
       if (d.item) {
         setTimeout(() => {
           const el = document.getElementById(`item-${d.item}`);
@@ -5819,11 +5830,24 @@ export default function App() {
         }, 350);
       }
     }
+    // A busca global manda trocar de tela: "triagem", "clientes", ou uma area.
+    function irPara(e) {
+      const { pagina, areaId } = e.detail || {};
+      if (!pagina) return;
+      if (pagina === "area" && areaId) {
+        if (!allowedModules.includes(areaId)) return;
+        setView({ page: "area", areaId });
+        return;
+      }
+      setView({ page: pagina });
+    }
     window.addEventListener("adeke:deeplink", handler);
     window.addEventListener("adeke:navigate", handler);
+    window.addEventListener("adeke:ir", irPara);
     return () => {
       window.removeEventListener("adeke:deeplink", handler);
       window.removeEventListener("adeke:navigate", handler);
+      window.removeEventListener("adeke:ir", irPara);
     };
   }, [allowedModules]);
 
@@ -5875,6 +5899,41 @@ export default function App() {
               Gestão Estratégica
             </div>
           </div>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("adeke:busca"))}
+            title="Buscar card, cliente ou tela (Ctrl+K)"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              borderRadius: 9,
+              padding: "8px 11px",
+              marginBottom: 14,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              color: "#94A3B8",
+              fontSize: 12,
+            }}
+          >
+            <Search size={14} />
+            <span style={{ flex: 1, textAlign: "left" }}>Buscar...</span>
+            <kbd
+              style={{
+                fontSize: 9.5,
+                fontWeight: 700,
+                background: "#E2E8F0",
+                color: "#64748B",
+                borderRadius: 4,
+                padding: "2px 5px",
+                fontFamily: "inherit",
+              }}
+            >
+              Ctrl K
+            </kbd>
+          </button>
           <nav style={{ flex: 1 }}>
             {visibleNav.map(({ id, label, Icon, color, view: v }) => {
               const active = activeId === id;

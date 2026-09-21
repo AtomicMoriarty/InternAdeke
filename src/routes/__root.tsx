@@ -10,7 +10,9 @@ import {
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationsPanel from "@/components/NotificationsPanel";
+import BuscaGlobal, { type Destino } from "@/components/BuscaGlobal";
 import { useProfiles } from "@/lib/profiles";
+import { moduloOf } from "@/lib/areas";
 
 import appCss from "../styles.css?url";
 
@@ -33,6 +35,7 @@ function NotFoundComponent() {
               plano: undefined,
               item: undefined,
               nota: undefined,
+              abrir: undefined,
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
@@ -152,6 +155,44 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
+      {session && (
+        <BuscaGlobal
+          aoEscolher={(d: Destino) => {
+            // Card e cliente entram pelo mesmo deep-link que as notificacoes
+            // ja usam: a rota "/" reemite como evento e o painel abre.
+            if (d.tipo === "card") {
+              router.navigate({
+                to: "/",
+                search: {
+                  cliente: d.clienteId,
+                  modulo: moduloOf(d.areaId),
+                  plano: d.planoId,
+                  item: d.itemId,
+                  abrir: "1",
+                } as never,
+              });
+              return;
+            }
+            if (d.tipo === "tela" && d.rota !== "/") {
+              router.navigate({ to: d.rota } as never);
+              return;
+            }
+            router.navigate({ to: "/", search: {} as never });
+            if (d.tipo === "tela" && d.pagina) {
+              // O painel escuta e troca de pagina depois de montar.
+              setTimeout(
+                () =>
+                  window.dispatchEvent(
+                    new CustomEvent("adeke:ir", {
+                      detail: { pagina: d.pagina, areaId: d.areaId },
+                    }),
+                  ),
+                400,
+              );
+            }
+          }}
+        />
+      )}
       {session && (
         <NotificationsPanel
           userId={session.user.id}

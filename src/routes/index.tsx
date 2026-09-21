@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { LayoutGrid, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { deveDesviar } from "@/lib/telaInicial";
 import AdekeDashboard from "@/components/AdekeDashboard";
 
 export const Route = createFileRoute("/")({
@@ -12,6 +13,9 @@ export const Route = createFileRoute("/")({
     plano: (s.plano as string) || undefined,
     item: (s.item as string) || undefined,
     nota: (s.nota as string) || undefined,
+    // A busca global pede o card aberto, e nao so destacado no plano: quem
+    // procurou um card quer ler o card.
+    abrir: (s.abrir as string) || undefined,
   }),
   component: Index,
 });
@@ -34,6 +38,14 @@ function Index() {
     });
     return () => sub.subscription.unsubscribe();
   }, [navigate]);
+
+  // Quem escolheu comecar na propria lista vai direto para la. So na chegada,
+  // e so quando nao veio por deep-link: um link de notificacao aponta para um
+  // card especifico e desviar dele seria perder o que a pessoa veio ver.
+  useEffect(() => {
+    if (!session || search?.cliente) return;
+    if (deveDesviar(session.user?.id)) navigate({ to: "/eu" });
+  }, [session, search, navigate]);
 
   // Forward deep-link params to dashboard via window event (once data loads,
   // AdekeDashboard listens to "adeke:deeplink").
