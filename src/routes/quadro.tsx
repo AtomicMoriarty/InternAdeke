@@ -15,6 +15,8 @@ export const Route = createFileRoute("/quadro")({
     status: parseArr(s.status),
     prazo: (s.prazo as string) || "todos",
     busca: (s.busca as string) || "",
+    // Card aberto. Fica na URL para dar para mandar o link de um card.
+    card: typeof s.card === "string" && s.card ? s.card : undefined,
   }),
   component: QuadroPage,
 });

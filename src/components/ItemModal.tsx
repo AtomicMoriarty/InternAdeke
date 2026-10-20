@@ -17,6 +17,7 @@ import {
   Maximize2,
   Eye,
   MoreHorizontal,
+  Link2,
 } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -122,6 +123,35 @@ function uid() {
 }
 
 /** Cobre a janela entre abrir o card e o estado dele chegar nesta tela. */
+/**
+ * Copia o link que abre este card direto no Quadro Geral, como o do Trello.
+ * Serve para mandar o card a alguém em vez de explicar onde ele está.
+ */
+function BotaoCopiarLink({ itemId }: { itemId: string }) {
+  const [copiado, setCopiado] = useState(false);
+  async function copiar() {
+    const link = `${window.location.origin}/quadro?card=${encodeURIComponent(itemId)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      // Navegador sem permissão de área de transferência: mostra para copiar à mão.
+      window.prompt("Copie o link do card:", link);
+      return;
+    }
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 1600);
+  }
+  return (
+    <button
+      onClick={copiar}
+      title={copiado ? "Link copiado" : "Copiar link do card"}
+      style={iconBtn}
+    >
+      {copiado ? <Check size={15} color="#10B981" /> : <Link2 size={15} color="#94A3B8" />}
+    </button>
+  );
+}
+
 function ModalCarregando({ carregado, onClose }: { carregado: boolean; onClose: () => void }) {
   return (
     <div
@@ -836,6 +866,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
           <div
             style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, paddingTop: 4 }}
           >
+            <BotaoCopiarLink itemId={itemId} />
             <button title="Maximizar" style={iconBtn}>
               <Maximize2 size={15} color="#94A3B8" />
             </button>
