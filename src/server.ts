@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
+import { gravarDiferenca } from "./lib/gravarDashboard";
 import type { Area, Cliente, Plano, Item } from "./lib/dashboardTypes";
 
 /** Segredos e bindings que o worker espera encontrar no ambiente. */
@@ -328,6 +329,9 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
     .maybeSingle();
   if (error) return apiJson({ error: error.message }, { status: 500 });
   const dashboard = row?.data;
+  // O que segue mexe no objeto direto; a cópia é o "antes" para gravar só a
+  // diferença, sem apagar o que o escritório editou enquanto isto rodava.
+  const original = structuredClone(dashboard);
   if (!dashboard?.areas) return apiJson({ error: "Dashboard state not found" }, { status: 404 });
 
   const areaId = body.areaId || body.area_id || "compliance";
@@ -391,11 +395,8 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
     lastGranolaSyncAt: granola.receivedAt,
   };
 
-  const { error: updateError } = await supabase
-    .from("dashboard_state")
-    .update({ data: dashboard, updated_at: new Date().toISOString() })
-    .eq("id", "main");
-  if (updateError) return apiJson({ error: updateError.message }, { status: 500 });
+  const gravado = await gravarDiferenca(supabase, original, dashboard);
+  if (!gravado.ok) return apiJson({ error: gravado.erro }, { status: 500 });
 
   return apiJson({
     ok: true,
@@ -500,11 +501,8 @@ async function rodarAcompanhamentoSemanal(env: WorkerEnv) {
     return { ok: true, semana: r.semana, criados: 0, visitados: r.itensVisitados };
   }
 
-  const { error: erroGravar } = await supabase
-    .from("dashboard_state")
-    .update({ data: r.data, updated_at: new Date().toISOString() })
-    .eq("id", "main");
-  if (erroGravar) return { ok: false, erro: erroGravar.message };
+  const gravado = await gravarDiferenca(supabase, row.data, r.data);
+  if (!gravado.ok) return { ok: false, erro: gravado.erro };
 
   return { ok: true, semana: r.semana, criados: r.comentariosCriados, visitados: r.itensVisitados };
 }

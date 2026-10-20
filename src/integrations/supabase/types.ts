@@ -12,16 +12,19 @@ export type Database = {
         Row: {
           data: Json;
           id: string;
+          marcas: Json;
           updated_at: string;
         };
         Insert: {
           data: Json;
           id: string;
+          marcas?: Json;
           updated_at?: string;
         };
         Update: {
           data?: Json;
           id?: string;
+          marcas?: Json;
           updated_at?: string;
         };
         Relationships: [];
@@ -115,7 +118,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      aplicar_operacoes_dashboard: {
+        Args: { p_ops: Json; p_marca?: string; p_id?: string };
+        Returns: string;
+      };
     };
     Enums: {
       [_ in never]: never;

@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "test:unit": "node --test src/lib/*.unit.test.ts",
     "nomes": "node scripts/nomes-indefinidos.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",

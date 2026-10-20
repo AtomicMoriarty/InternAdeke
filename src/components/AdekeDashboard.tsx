@@ -71,7 +71,7 @@ import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/co
 import DiretorioClientes from "@/components/DiretorioClientes";
 import Triagem from "@/components/Triagem";
 import { renomearPlanoImportado } from "@/lib/importTrello";
-import { semearDashboardState } from "@/lib/useDashboardState";
+import { useDashboardState, criarDashboardStateSeVazio } from "@/lib/useDashboardState";
 import {
   etapasDaArea,
   etapaDoItem,
@@ -5632,9 +5632,6 @@ function canAccessView(view, allowedModules) {
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-import { supabase } from "@/integrations/supabase/client";
-
-const ROW_ID = "main";
 
 const QUADRO_DEFAULTS = {
   modulo: "ambos",
@@ -5646,12 +5643,12 @@ const QUADRO_DEFAULTS = {
 };
 
 export default function App() {
-  const [data, setDataState] = useState(INIT);
+  const { data: dataLoja, loaded, update: atualizarLoja } = useDashboardState("painel");
+  const data = dataLoja ?? INIT;
   const [view, setView] = useState({ page: "dashboard" });
   // Card aberto a partir da Triagem: a lista de la atravessa areas, entao o
   // modal precisa morar aqui em cima e nao dentro de um plano.
   const [cardDaTriagem, setCardDaTriagem] = useState(null);
-  const [loaded, setLoaded] = useState(false);
   const [dashTab, setDashTab] = useState("painel");
   const [quadroFilters, setQuadroFilters] = useState(QUADRO_DEFAULTS);
   const currentUser = useCurrentUser();
@@ -5677,123 +5674,33 @@ export default function App() {
     }
   }, [view, allowedModules]);
 
-  const remoteRef = useRef(false);
-  const saveTimer = useRef(null);
-  const dataRef = useRef(data);
-  const lastSentJsonRef = useRef("");
-  const pendingSaveRef = useRef(false);
-
-  // Wrap setData to also schedule a remote save
+  // O estado mora na loja compartilhada (useDashboardState), que grava por
+  // operacoes e junta o que chega dos outros. Antes este painel tinha um
+  // gravador proprio, que regravava o JSON inteiro e ignorava o que chegava
+  // enquanto gravava: abrir um card e editar no modal com o painel em espera
+  // apagava a edicao do modal, mesmo com uma pessoa so.
   const setData = (updater) => {
-    setDataState((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      dataRef.current = next;
-      // A loja compartilhada acompanha: sem isto, editar aqui e abrir um card
-      // mostraria o dado de antes da edicao.
-      semearDashboardState(next);
-      return next;
-    });
+    atualizarLoja((prev) => (typeof updater === "function" ? updater(prev) : updater));
   };
 
-  // Initial load + realtime subscription
+  // Na primeira carga: banco vazio ganha o estado inicial, e o que veio passa
+  // pelas reconciliacoes. migrarParaDiretorio roda uma vez: clientes que
+  // existiam soltos em cada area viram um cadastro so, e o mesmo nome em duas
+  // areas se junta. renomearPlanoImportado troca o "Importado do Trello" das
+  // primeiras importacoes por "Demandas": o nome tem que falar do trabalho, nao
+  // de onde ele veio. Se nada mudar, nada e gravado.
+  const reconciliouRef = useRef(false);
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data: row } = await supabase
-        .from("dashboard_state")
-        .select("data")
-        .eq("id", ROW_ID)
-        .maybeSingle();
-      if (!mounted) return;
-      if (row?.data) {
-        // migrarParaDiretorio roda uma vez: clientes que existiam soltos em
-        // cada area viram um cadastro so, e o mesmo nome em duas areas se junta.
-        // renomearPlanoImportado troca o "Importado do Trello" das primeiras
-        // importacoes por "Demandas": o nome tem que falar do trabalho, nao de
-        // onde ele veio.
-        const reconciliado = renomearPlanoImportado(
-          migrarParaDiretorio(ensureTemplates(ensureAreas(row.data))),
-        );
-        setDataState(reconciliado);
-        dataRef.current = reconciliado;
-        // Entrega a mesma copia para o resto do app: sem isto, abrir um card
-        // daqui buscaria de novo a meia mega que acabou de chegar.
-        semearDashboardState(reconciliado);
-        if (reconciliado !== row.data) {
-          // quadros novos entraram: persiste para os demais usuarios
-          lastSentJsonRef.current = JSON.stringify(reconciliado);
-          await supabase
-            .from("dashboard_state")
-            .update({ data: reconciliado, updated_at: new Date().toISOString() })
-            .eq("id", ROW_ID);
-        } else {
-          remoteRef.current = true;
-          lastSentJsonRef.current = JSON.stringify(row.data);
-        }
-      } else {
-        await supabase.from("dashboard_state").insert({ id: ROW_ID, data: INIT });
-        dataRef.current = INIT;
-        lastSentJsonRef.current = JSON.stringify(INIT);
-      }
-      setLoaded(true);
-    })();
-
-    const channel = supabase
-      .channel("dashboard_state_changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "dashboard_state", filter: `id=eq.${ROW_ID}` },
-        (payload) => {
-          const newData = payload.new?.data;
-          if (!newData) return;
-          const newJson = JSON.stringify(newData);
-          // Echo of our own write
-          if (newJson === lastSentJsonRef.current) return;
-          // Same as current local state
-          if (newJson === JSON.stringify(dataRef.current)) return;
-          // Local edits pending — ignore remote to avoid clobbering
-          if (pendingSaveRef.current) return;
-          remoteRef.current = true;
-          dataRef.current = newData;
-          lastSentJsonRef.current = newJson;
-          setDataState(newData);
-          semearDashboardState(newData);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      mounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // Debounced save when data changes locally
-  useEffect(() => {
-    if (!loaded) return;
-    if (remoteRef.current) {
-      remoteRef.current = false;
+    if (!loaded || reconciliouRef.current) return;
+    if (!dataLoja) {
+      void criarDashboardStateSeVazio(INIT);
       return;
     }
-    pendingSaveRef.current = true;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const snapshot = dataRef.current;
-      const snapshotJson = JSON.stringify(snapshot);
-      lastSentJsonRef.current = snapshotJson;
-      await supabase
-        .from("dashboard_state")
-        .update({ data: snapshot, updated_at: new Date().toISOString() })
-        .eq("id", ROW_ID);
-      // Only clear pending if no further edits queued meanwhile
-      if (JSON.stringify(dataRef.current) === snapshotJson) {
-        pendingSaveRef.current = false;
-      }
-    }, 600);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, [data, loaded]);
+    reconciliouRef.current = true;
+    atualizarLoja((prev) =>
+      renomearPlanoImportado(migrarParaDiretorio(ensureTemplates(ensureAreas(prev)))),
+    );
+  }, [loaded, dataLoja, atualizarLoja]);
 
   // Deep-link from notifications panel / Quadro Geral
   useEffect(() => {
