@@ -40,6 +40,8 @@ type Filters = {
   prazo: "todos" | "hoje" | "semana" | "atrasado";
   /** Texto livre: procura no nome do card, no cliente, no plano e nas etiquetas. */
   busca: string;
+  /** Id do card aberto. Na página /quadro vira ?card=, e o link abre o card direto. */
+  card?: string;
 };
 
 const DEFAULTS: Filters = {
@@ -74,7 +76,9 @@ function lerPadrao(userId?: string): Filters | null {
 
 function gravarPadrao(userId: string, f: Filters) {
   try {
-    localStorage.setItem(CHAVE_PADRAO + userId, JSON.stringify(f));
+    // O card aberto não é preferência de como ver o quadro.
+    const { card: _card, ...semCard } = f;
+    localStorage.setItem(CHAVE_PADRAO + userId, JSON.stringify(semCard));
   } catch {
     // Não poder lembrar não pode quebrar o filtro que a pessoa acabou de usar.
   }
@@ -344,7 +348,33 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
       planoId: card.planoId,
       itemId: card.itemId,
     });
+    abertoPeloLink.current = card.itemId;
+    setFilters({ card: card.itemId });
   }
+
+  function fecharCard() {
+    setModalItem(null);
+    setFilters({ card: undefined });
+  }
+
+  // Chegou por um link com ?card=: abre assim que o estado carregar. Card que
+  // não existe mais, ou de um quadro que a pessoa não vê, simplesmente não abre.
+  // A ref guarda qual card já foi aberto assim: ao fechar, a URL leva um
+  // instante para perder o ?card=, e sem ela o card reabriria sozinho.
+  const abertoPeloLink = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!filters.card || abertoPeloLink.current === filters.card) return;
+    const card = allCards.find((c) => c.itemId === filters.card);
+    if (card) {
+      abertoPeloLink.current = card.itemId;
+      setModalItem({
+        areaId: card.areaId,
+        clienteId: card.clienteId,
+        planoId: card.planoId,
+        itemId: card.itemId,
+      });
+    }
+  }, [filters.card, allCards]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#F0F5FF", fontFamily: "Outfit, sans-serif" }}>
@@ -539,7 +569,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
           clienteId={modalItem.clienteId}
           planoId={modalItem.planoId}
           itemId={modalItem.itemId}
-          onClose={() => setModalItem(null)}
+          onClose={fecharCard}
         />
       )}
     </div>
