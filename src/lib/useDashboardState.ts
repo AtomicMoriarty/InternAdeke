@@ -64,6 +64,7 @@ const loja = {
   valoresNaTabela: false,
   valores: new Map<string, number>(),
   canalValores: null as ReturnType<typeof supabase.channel> | null,
+  filaValores: Promise.resolve() as Promise<void>,
 };
 
 function avisar() {
@@ -106,6 +107,7 @@ function receberDoServidor(linha: LinhaDashboard, permitirIgual = true) {
 
 async function carregar() {
   if (loja.carregando) return loja.carregando;
+  assinarRealtime();
   loja.carregando = (async () => {
     // "*" e não a lista de colunas: a coluna marcas só existe depois da
     // migração, e o app precisa funcionar antes dela.
@@ -288,30 +290,43 @@ async function enviar() {
 }
 
 const lerData = () => loja.data;
+
+/** O estado como a tela vê, para quem lê fora de um componente. */
+export const lerDashboardState = lerData;
 const lerCarregado = () => loja.carregado;
 const noServidor = () => null;
 const carregadoNoServidor = () => false;
+
+/**
+ * Muda o estado: a tela atualiza na hora, e a gravação sai em lote logo depois.
+ * É o mesmo update do hook, para quem está fora de um componente.
+ */
+export function atualizarDashboardState(updater: (prev: DashboardState) => DashboardState) {
+  if (!loja.data) return;
+  const novo = updater(loja.data);
+  if (novo === loja.data) return;
+  let ops = diferenca(loja.data, novo);
+  loja.data = novo;
+  avisar();
+  if (loja.valoresNaTabela) {
+    const separado = separarValores(ops);
+    ops = separado.ops;
+    // Em fila: duas mudanças do mesmo valor não podem chegar ao banco trocadas.
+    if (separado.valores.length) {
+      const mudancas = separado.valores;
+      loja.filaValores = loja.filaValores.then(() => gravarValores(mudancas));
+    }
+  }
+  if (!ops.length) return;
+  loja.pendentes.push(...ops);
+  agendarGravacao();
+}
 
 export function useDashboardState(_escopo = "default") {
   const data = useSyncExternalStore(inscrever, lerData, noServidor);
   const loaded = useSyncExternalStore(inscrever, lerCarregado, carregadoNoServidor);
 
-  const update = useCallback((updater: (prev: DashboardState) => DashboardState) => {
-    if (!loja.data) return;
-    const novo = updater(loja.data);
-    if (novo === loja.data) return;
-    let ops = diferenca(loja.data, novo);
-    loja.data = novo;
-    avisar();
-    if (loja.valoresNaTabela) {
-      const separado = separarValores(ops);
-      ops = separado.ops;
-      if (separado.valores.length) void gravarValores(separado.valores);
-    }
-    if (!ops.length) return;
-    loja.pendentes.push(...ops);
-    agendarGravacao();
-  }, []);
+  const update = useCallback(atualizarDashboardState, []);
 
   return { data, loaded, update };
 }
