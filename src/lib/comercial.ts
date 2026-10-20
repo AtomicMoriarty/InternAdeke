@@ -12,6 +12,9 @@
 import type { DashboardState, Area, Cliente, Plano, Item } from "@/lib/dashboardTypes";
 import type { Profile } from "@/lib/profiles";
 import { parseBR } from "@/lib/relatorios";
+import { lerValor } from "@/lib/valoresNegocio";
+
+export { lerValor };
 
 export const AREA_COMERCIAL = "comercial";
 
@@ -183,40 +186,6 @@ export function valorDoItem(item: Item): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") return lerValor(v);
   return 0;
-}
-
-/**
- * Lê o que a pessoa digitou no campo de valor.
- *
- * Aceita "8500", "8.500", "R$ 8.500,00" e "8,5k" porque é assim que se escreve
- * valor com pressa. O ponto é separador de milhar no Brasil, então "8.500" é
- * oito mil e quinhentos, não oito e meio.
- */
-export function lerValor(texto: string): number {
-  const bruto = String(texto || "")
-    .replace(/r\$/gi, "")
-    .trim();
-  if (!bruto) return 0;
-
-  const temMil = /k\s*$/i.test(bruto) || /\bmil\b/i.test(bruto);
-  let corpo = bruto
-    .replace(/k\s*$/i, "")
-    .replace(/\bmil\b/i, "")
-    .trim();
-
-  // Vírgula é decimal; ponto é milhar — salvo quando só há ponto e ele separa
-  // exatamente duas casas ("8.50"), caso em que a pessoa quis decimal.
-  if (corpo.includes(",")) {
-    corpo = corpo.replace(/\./g, "").replace(",", ".");
-  } else if (/^\d+\.\d{1,2}$/.test(corpo) && temMil) {
-    // "8.5k" = oito mil e quinhentos
-  } else {
-    corpo = corpo.replace(/\./g, "");
-  }
-
-  const n = parseFloat(corpo.replace(/[^\d.-]/g, ""));
-  if (!Number.isFinite(n)) return 0;
-  return temMil ? n * 1000 : n;
 }
 
 export function formatarValor(n: number): string {

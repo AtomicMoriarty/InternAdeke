@@ -83,6 +83,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      valores_negocio: {
+        Row: {
+          atualizado_em: string;
+          atualizado_por: string | null;
+          item_id: string;
+          valor: number;
+        };
+        Insert: {
+          atualizado_em?: string;
+          atualizado_por?: string | null;
+          item_id: string;
+          valor?: number;
+        };
+        Update: {
+          atualizado_em?: string;
+          atualizado_por?: string | null;
+          item_id?: string;
+          valor?: number;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           avatar_color: string;

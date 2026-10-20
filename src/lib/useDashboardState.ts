@@ -19,12 +19,16 @@
 //
 // Como saber se a versão que chegou já inclui um lote nosso: cada lote leva uma
 // marca, e o banco guarda as últimas marcas aplicadas na coluna `marcas`.
+//
+// Os valores em R$ dos negócios não passam pelo JSON: vão para a tabela
+// valores_negocio, que o banco só entrega a quem pode ver (valoresNegocio.ts).
 
 import { useCallback, useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import { aplicar, diferenca, iguais, type Operacao } from "@/lib/sincronizacao";
 import { DASHBOARD_ROW_ID, gravarOperacoes, novaMarca } from "@/lib/gravarDashboard";
+import { separarValores, sobreporValores, type MudancaValor } from "@/lib/valoresNegocio";
 
 type Ouvinte = () => void;
 type Lote = { marca: string; ops: Operacao[] };
@@ -53,6 +57,13 @@ const loja = {
   canal: null as ReturnType<typeof supabase.channel> | null,
   carregando: null as Promise<void> | null,
   timerGravacao: null as ReturnType<typeof setTimeout> | null,
+  /**
+   * A tabela valores_negocio existe? Até a migração chegar ao banco, o valor
+   * continua no JSON, como antes.
+   */
+  valoresNaTabela: false,
+  valores: new Map<string, number>(),
+  canalValores: null as ReturnType<typeof supabase.channel> | null,
 };
 
 function avisar() {
@@ -66,6 +77,7 @@ function recalcular() {
   let vista = loja.servidor;
   for (const lote of loja.emVoo) vista = aplicar(vista, lote.ops);
   vista = aplicar(vista, loja.pendentes);
+  if (loja.valoresNaTabela) vista = sobreporValores(vista, loja.valores);
   // O eco da nossa própria gravação dá o mesmo que já está na tela; publicar
   // de novo faria o app inteiro redesenhar por nada.
   if (loja.data && iguais(vista, loja.data)) return;
@@ -97,11 +109,12 @@ async function carregar() {
   loja.carregando = (async () => {
     // "*" e não a lista de colunas: a coluna marcas só existe depois da
     // migração, e o app precisa funcionar antes dela.
-    const { data: linha } = await supabase
-      .from("dashboard_state")
-      .select("*")
-      .eq("id", DASHBOARD_ROW_ID)
-      .maybeSingle();
+    // Os valores vêm junto, antes de a tela aparecer: editar um valor antes
+    // de saber se a tabela existe o mandaria para o lugar errado.
+    const [{ data: linha }] = await Promise.all([
+      supabase.from("dashboard_state").select("*").eq("id", DASHBOARD_ROW_ID).maybeSingle(),
+      carregarValores(),
+    ]);
     if (linha?.data) receberDoServidor(linha as LinhaDashboard);
     else if (!loja.carregado) {
       loja.carregado = true;
@@ -111,6 +124,84 @@ async function carregar() {
     loja.carregando = null;
   });
   return loja.carregando;
+}
+
+/** Tabela ou coluna que ainda não existe no banco. */
+function faltaNoBanco(e: { code?: string } | null) {
+  return !!e && ["42P01", "PGRST205", "PGRST204", "42703"].includes(e.code || "");
+}
+
+async function carregarValores() {
+  const { data, error } = await supabase.from("valores_negocio").select("item_id, valor");
+  if (error) {
+    loja.valoresNaTabela = false;
+    if (!faltaNoBanco(error)) console.error("[valores] não carregou:", error.message);
+    return;
+  }
+  loja.valoresNaTabela = true;
+  loja.valores = new Map((data || []).map((l) => [l.item_id, Number(l.valor)]));
+  assinarValores();
+}
+
+/**
+ * Tempo real dos valores, num canal à parte e só depois de saber que a tabela
+ * existe: assinar tabela inexistente derruba o canal, e junto iria o do estado.
+ */
+function assinarValores() {
+  if (loja.canalValores) return;
+  loja.canalValores = supabase
+    .channel("valores_negocio")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "valores_negocio" },
+      (payload: {
+        eventType: string;
+        new?: { item_id?: string; valor?: number };
+        old?: { item_id?: string };
+      }) => {
+        if (!loja.valoresNaTabela) return;
+        if (payload.eventType === "DELETE") {
+          if (payload.old?.item_id) loja.valores.delete(payload.old.item_id);
+        } else if (payload.new?.item_id) {
+          loja.valores.set(payload.new.item_id, Number(payload.new.valor));
+        }
+        recalcular();
+      },
+    )
+    .subscribe();
+}
+
+/**
+ * Grava valores de negócio na tabela. Quem não pode ver valores também não
+ * pode gravar — o banco recusa —, então a tela volta ao que estava.
+ */
+async function gravarValores(mudancas: MudancaValor[]) {
+  const antes = new Map(loja.valores);
+  const gravar: { item_id: string; valor: number }[] = [];
+  const apagar: string[] = [];
+  for (const m of mudancas) {
+    if (m.valor === null || (m.valor === 0 && !loja.valores.has(m.itemId))) {
+      if (loja.valores.has(m.itemId)) apagar.push(m.itemId);
+      loja.valores.delete(m.itemId);
+    } else {
+      gravar.push({ item_id: m.itemId, valor: m.valor });
+      loja.valores.set(m.itemId, m.valor);
+    }
+  }
+  if (!gravar.length && !apagar.length) return;
+  const erros = (
+    await Promise.all([
+      gravar.length ? supabase.from("valores_negocio").upsert(gravar) : null,
+      apagar.length ? supabase.from("valores_negocio").delete().in("item_id", apagar) : null,
+    ])
+  )
+    .map((r) => r?.error)
+    .filter(Boolean);
+  if (erros.length) {
+    console.error("[valores] gravação recusada:", erros[0]?.message);
+    loja.valores = antes;
+    recalcular();
+  }
 }
 
 function assinarRealtime() {
@@ -209,9 +300,14 @@ export function useDashboardState(_escopo = "default") {
     if (!loja.data) return;
     const novo = updater(loja.data);
     if (novo === loja.data) return;
-    const ops = diferenca(loja.data, novo);
+    let ops = diferenca(loja.data, novo);
     loja.data = novo;
     avisar();
+    if (loja.valoresNaTabela) {
+      const separado = separarValores(ops);
+      ops = separado.ops;
+      if (separado.valores.length) void gravarValores(separado.valores);
+    }
     if (!ops.length) return;
     loja.pendentes.push(...ops);
     agendarGravacao();
