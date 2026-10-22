@@ -9,6 +9,7 @@
 
 import { AREAS, DEMANDAS_POR_AREA, checklistTemplateFor } from "@/lib/areas";
 import type { DashboardState, Item } from "@/lib/dashboardTypes";
+import { uid, dataBR } from "@/lib/comum";
 
 export type ItemChecklistTemplate = { text: string };
 
@@ -41,10 +42,6 @@ export const TIPOS_PADRAO = [
   "Contrato",
   "Outro",
 ];
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 export function templateVazio(areaId = ""): TemplateCard {
   return {
@@ -103,10 +100,6 @@ export function templatesDaArea(data: DashboardState | null, areaId: string): Te
   return todos
     .filter((t) => !t.areaId || t.areaId === areaId)
     .sort((a, b) => a.nome.localeCompare(b.nome));
-}
-
-function dataBR(d: Date) {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 export type ContextoCriacao = {

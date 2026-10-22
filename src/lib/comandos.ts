@@ -10,6 +10,7 @@
 
 import type { Profile } from "@/lib/profiles";
 import type { Item } from "@/lib/dashboardTypes";
+import { uid, dataBR } from "@/lib/comum";
 
 /** Aceita !task e !tarefa, em qualquer caixa e em qualquer posição do texto. */
 const RE_TASK = /!\s*(task|tarefa)\b/gi;
@@ -130,14 +131,6 @@ export function nomeDaTarefa(texto: string, limite = 90): string {
     /[.,;:]+$/,
     "",
   );
-}
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function dataBR(d: Date) {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 export type OrigemTarefa = {

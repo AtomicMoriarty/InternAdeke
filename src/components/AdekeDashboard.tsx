@@ -100,6 +100,7 @@ import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
+import { uid, hojeBR as todayBR } from "@/lib/comum";
 
 const AREA_ICONS = {
   shield: Shield,
@@ -224,10 +225,6 @@ const TIPOS_ITEM = [
   "Documento",
   "Outro",
 ];
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 const RISK_QUESTIONS = [
   {
@@ -985,12 +982,6 @@ function reorderById(arr, sourceId, targetId) {
   next.splice(to, 0, moved);
   return next;
 }
-function todayBR() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
 // ─── Primitives ───────────────────────────────────────────────────────────────
 function Ring({ pct, color, size = 80, stroke = 8 }) {
   const r = (size - stroke) / 2;

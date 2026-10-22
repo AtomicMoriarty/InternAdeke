@@ -16,6 +16,7 @@
 // os encaminhamentos viram card pelo caminho que já existe.
 
 import type { Profile } from "@/lib/profiles";
+import { semAcento } from "@/lib/comum";
 
 export type Fala = {
   /** O nome como apareceu na transcrição. */
@@ -40,14 +41,6 @@ const ROTULOS: RegExp[] = [
   // Nome: texto   (o mais comum; por último para não roubar dos outros)
   /^\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'\s]{1,39}?)\s*:\s+(.*)$/,
 ];
-
-function semAcento(s: string) {
-  return String(s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim();
-}
 
 /**
  * Quebra a transcrição em falas.

@@ -100,6 +100,7 @@ import {
   equivalenteGlobal,
   statusLegado,
 } from "@/lib/etapas";
+import { uid, hojeBR as todayBR } from "@/lib/comum";
 
 const ETIQUETA_COLORS = [
   "#EF4444",
@@ -121,10 +122,6 @@ const DEADLINE_ALERT_OPTIONS = [
   { value: "7", label: "7 dias antes" },
   { value: "14", label: "14 dias antes" },
 ];
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 /** Cobre a janela entre abrir o card e o estado dele chegar nesta tela. */
 /**
@@ -207,10 +204,6 @@ function ModalCarregando({ carregado, onClose }: { carregado: boolean; onClose: 
       </div>
     </div>
   );
-}
-function todayBR() {
-  const d = new Date();
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 const MODULO_PRODUTOS = "Produtos";
 /** id sintetico: produtos moram em data.produtos, nao em data.areas */
