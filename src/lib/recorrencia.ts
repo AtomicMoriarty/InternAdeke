@@ -104,6 +104,7 @@ export function proximoCard(
     tipo: item.tipo,
     responsaveis: Array.isArray(item.responsaveis) ? [...item.responsaveis] : [],
     responsavel: item.responsavel,
+    seguidores: Array.isArray(item.seguidores) ? [...item.seguidores] : undefined,
     etiquetas: Array.isArray(item.etiquetas) ? item.etiquetas.map((e) => ({ ...e })) : [],
     descricao: item.descricao,
     obs: "",

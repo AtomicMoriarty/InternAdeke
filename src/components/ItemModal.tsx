@@ -14,9 +14,7 @@ import {
   ListChecks,
   Trash2,
   ChevronDown,
-  Maximize2,
   Eye,
-  MoreHorizontal,
   Link2,
 } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
@@ -401,6 +399,8 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
+  const seguidores: string[] = Array.isArray(item.seguidores) ? item.seguidores : [];
+  const sigo = !!currentUser && seguidores.includes(currentUser.id);
   const acompanhando = temAcompanhamento(item);
   // Campos que so existem no Comercial: um item la e um negocio.
   // Um card da area comercial e um negocio do funil — menos quando nasceu de
@@ -868,15 +868,39 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, paddingTop: 4 }}
           >
             <BotaoCopiarLink itemId={itemId} />
-            <button title="Maximizar" style={iconBtn}>
-              <Maximize2 size={15} color="#94A3B8" />
-            </button>
-            <button title="Visualizar" style={iconBtn}>
-              <Eye size={15} color="#94A3B8" />
-            </button>
-            <button title="Opções" style={iconBtn}>
-              <MoreHorizontal size={15} color="#94A3B8" />
-            </button>
+            {/* Seguir, como o "watch" do Trello: quem segue recebe no sino os
+                comentários e as mudanças de status, sem ser responsável. */}
+            {currentUser && (
+              <button
+                onClick={() => {
+                  const atuais = Array.isArray(item.seguidores) ? item.seguidores : [];
+                  patchItem({
+                    seguidores: sigo
+                      ? atuais.filter((id: string) => id !== currentUser.id)
+                      : [...atuais, currentUser.id],
+                  });
+                }}
+                title={
+                  sigo
+                    ? "Você segue este card. Clique para deixar de seguir"
+                    : "Seguir: receber no sino os comentários e mudanças de status"
+                }
+                style={{
+                  ...iconBtn,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: sigo ? "#CCFBF1" : iconBtn.background,
+                }}
+              >
+                <Eye size={15} color={sigo ? "#0D9488" : "#94A3B8"} />
+                {seguidores.length > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0D9488" }}>
+                    {seguidores.length}
+                  </span>
+                )}
+              </button>
+            )}
             <button onClick={onClose} style={{ ...iconBtn, marginLeft: 4 }} title="Fechar">
               <X size={17} color="#475569" />
             </button>

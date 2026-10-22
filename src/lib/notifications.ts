@@ -1,5 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lerDashboardState } from "@/lib/useDashboardState";
+import type { DashboardState, Item } from "@/lib/dashboardTypes";
+
+/**
+ * Quem segue o card (botão de olho no card, como o "watch" do Trello).
+ *
+ * Os avisos são disparados de mais de vinte lugares; procurar os seguidores
+ * aqui, pelo id do item, poupa cada um deles de ter que repassá-los.
+ */
+export function seguidoresDoItem(
+  data: DashboardState | null | undefined,
+  itemId?: string | null,
+): string[] {
+  if (!data || !itemId) return [];
+  const achar = (items?: Item[]) => items?.find((i) => i.id === itemId);
+  let item: Item | undefined;
+  for (const area of data.areas || []) {
+    for (const cliente of area.clientes || []) {
+      for (const plano of cliente.planos || []) item ||= achar(plano.items);
+    }
+  }
+  for (const produto of data.produtos || []) item ||= achar(produto.items);
+  return Array.isArray(item?.seguidores) ? (item.seguidores as string[]) : [];
+}
 
 export type Notification = {
   id: string;
@@ -100,7 +124,10 @@ export async function emitNotifications(opts: {
   const { ctx, mentionedIds, responsibleIds } = opts;
   const rows: Record<string, unknown>[] = [];
   const mset = new Set(mentionedIds.filter((id) => id !== ctx.autor_id));
-  const rset = new Set(responsibleIds.filter((id) => id !== ctx.autor_id && !mset.has(id)));
+  const seguidores = seguidoresDoItem(lerDashboardState(), ctx.item_id);
+  const rset = new Set(
+    [...responsibleIds, ...seguidores].filter((id) => id !== ctx.autor_id && !mset.has(id)),
+  );
 
   for (const uid of mset) {
     rows.push({ ...baseRow(ctx), user_id: uid, tipo: "mencao" });
@@ -143,7 +170,10 @@ export async function emitMudancaStatus(opts: {
   ctx: NotifContext;
   novoStatus: string;
 }) {
-  const targets = opts.responsibleIds.filter((id) => id !== opts.ctx.autor_id);
+  const seguidores = seguidoresDoItem(lerDashboardState(), opts.ctx.item_id);
+  const targets = [...new Set([...opts.responsibleIds, ...seguidores])].filter(
+    (id) => id !== opts.ctx.autor_id,
+  );
   if (!targets.length) return;
   const rows = targets.map((uid) => ({
     ...baseRow(opts.ctx),
