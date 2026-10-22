@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   avisosDePrazo,
   chaveAviso,
+  dataDoPrazo,
   diaNoEscritorio,
   lerPrazo,
   prazoEncerrado,
@@ -107,6 +108,21 @@ test("produtos também entram", () => {
   const [aviso] = avisosDePrazo(data, agora, new Set(), modulo);
   assert.equal(aviso.modulo, "Produtos");
   assert.equal(aviso.cliente_id, "pr1");
+});
+
+test("dataDoPrazo entende os formatos que as telas erravam", () => {
+  // Dia e mês no lugar certo: 05/03 é 5 de março, não 3 de maio.
+  const br = dataDoPrazo("05/03/2026");
+  assert.deepEqual([br?.getFullYear(), br?.getMonth(), br?.getDate()], [2026, 2, 5]);
+  // O formato que o card grava (campo de data e hora).
+  const card = dataDoPrazo("2026-09-22T17:15", true);
+  assert.deepEqual(
+    [card?.getMonth(), card?.getDate(), card?.getHours(), card?.getMinutes()],
+    [8, 22, 17, 15],
+  );
+  // Sem pedir a hora, fica a meia-noite do dia: é o que as contas de atraso usam.
+  assert.equal(dataDoPrazo("2026-09-22T17:15")?.getHours(), 0);
+  assert.equal(dataDoPrazo("lixo"), null);
 });
 
 test("texto do aviso", () => {

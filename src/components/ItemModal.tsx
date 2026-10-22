@@ -82,6 +82,7 @@ import {
   linkTemporario,
   apagarAnexo,
   formatarTamanho,
+  linkSeguro,
   TAMANHO_MAXIMO,
 } from "@/lib/anexos";
 
@@ -688,8 +689,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   function addAnexo() {
-    const url = newAnexoUrl.trim();
-    if (!url) return;
+    if (!newAnexoUrl.trim()) return;
+    const url = linkSeguro(newAnexoUrl);
+    if (!url) {
+      setErroAnexo("Link inválido. Use um endereço que comece com http:// ou https://.");
+      return;
+    }
+    setErroAnexo("");
     patchItem({
       anexos: [
         ...(item.anexos || []),
@@ -740,7 +746,10 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   /** O arquivo e privado: abre por link assinado, gerado na hora. */
   async function abrirAnexo(anexo: Anexo) {
     if (!anexo.caminho) {
-      if (anexo.url) window.open(anexo.url, "_blank", "noreferrer");
+      // Links gravados antes da conferência também passam por ela ao abrir.
+      const link = linkSeguro(anexo.url);
+      if (link) window.open(link, "_blank", "noopener,noreferrer");
+      else if (anexo.url) setErroAnexo("Este link não é um endereço web válido e não foi aberto.");
       return;
     }
     const url = await linkTemporario(anexo.caminho);

@@ -80,6 +80,24 @@ export function lerPrazo(prazo: unknown): { dia: string; hora: string | null } |
   return null;
 }
 
+/**
+ * O prazo como Date local (meia-noite do dia, ou a hora escrita).
+ *
+ * As telas tinham cada uma o seu leitor, e cada uma errava um formato: o dos
+ * relatórios só entendia "31/12/2026", e não via os prazos gravados pelo card
+ * ("2026-12-31T14:30", do campo de data e hora); o do Quadro Geral usava
+ * new Date(), que não entende "31/12/2026" e lê "05/03/2026" como 3 de maio.
+ * Todas passam a ler por aqui.
+ */
+export function dataDoPrazo(prazo: unknown, comHora = false): Date | null {
+  const p = lerPrazo(prazo);
+  if (!p) return null;
+  const [a, m, d] = p.dia.split("-").map(Number);
+  const [h, min] = comHora && p.hora ? p.hora.split(":").map(Number) : [0, 0];
+  const data = new Date(a, m - 1, d, h, min);
+  return Number.isNaN(data.getTime()) ? null : data;
+}
+
 /** Diferença em dias de calendário entre dois AAAA-MM-DD. */
 function diasEntre(de: string, ate: string): number {
   return Math.round((Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${de}T00:00:00Z`)) / 86400000);

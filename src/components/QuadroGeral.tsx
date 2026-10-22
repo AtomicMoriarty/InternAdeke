@@ -30,6 +30,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import { MODULOS, ALL_MODULES, allowedModulesFor, AREAS } from "@/lib/areas";
 import { etapasDaArea, temEtapasProprias, etapaAoSoltarNaColuna, type Etapa } from "@/lib/etapas";
+import { dataDoPrazo, lerPrazo } from "@/lib/prazos";
 
 type Filters = {
   modulo: string; // rotulo do modulo, ou "ambos" para todos
@@ -1574,8 +1575,9 @@ function prazoStatus(iso: string): {
   color: string;
 } {
   if (!iso) return { bucket: "", color: "#64748B" };
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return { bucket: "", color: "#64748B" };
+  // new Date() não entende "31/12/2026" e lê "05/03/2026" como 3 de maio.
+  const d = dataDoPrazo(iso);
+  if (!d) return { bucket: "", color: "#64748B" };
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const target = new Date(d);
@@ -1588,12 +1590,8 @@ function prazoStatus(iso: string): {
 }
 
 function formatPrazo(iso: string) {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const p = lerPrazo(iso);
+  if (!p) return iso;
+  const [, m, d] = p.dia.split("-");
+  return p.hora ? `${d}/${m} ${p.hora}` : `${d}/${m}`;
 }

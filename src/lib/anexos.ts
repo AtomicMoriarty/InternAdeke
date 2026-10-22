@@ -25,6 +25,26 @@ export type Anexo = {
   url?: string;
 };
 
+/**
+ * O link colado à mão, só se for endereço de verdade.
+ *
+ * O campo aceitava qualquer texto, e abrir o anexo é window.open: um
+ * "javascript:..." colado por alguém rodaria, com a sessão de quem clicasse,
+ * no navegador de qualquer colega — inclusive do admin. Só passa http, https e
+ * mailto; "www.exemplo.com" ganha o https que faltou.
+ */
+export function linkSeguro(texto: unknown): string | null {
+  let s = String(texto ?? "").trim();
+  if (!s) return null;
+  if (/^www\./i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    return ["http:", "https:", "mailto:"].includes(u.protocol) ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Um anexo é arquivo no bucket ou link externo colado à mão? */
 export function ehArquivo(a: Anexo): boolean {
   return !!a?.caminho;
