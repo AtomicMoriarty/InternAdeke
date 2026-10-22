@@ -20,6 +20,15 @@
 // Como saber se a versão que chegou já inclui um lote nosso: cada lote leva uma
 // marca, e o banco guarda as últimas marcas aplicadas na coluna `marcas`.
 //
+// O servidor guarda o estado em area_state, uma linha por área
+// (estadoPorArea.ts), e só entrega a cada pessoa as áreas que ela pode ver.
+// Aqui as linhas são montadas de volta no DashboardState de sempre, e o tempo
+// real traz só a linha que mudou. Um lote que mexe em duas áreas só está
+// confirmado quando as duas linhas voltaram com a marca dele.
+//
+// Antes da migração chegar ao banco, o modo "legado" lê e acompanha o
+// dashboard_state como antes.
+//
 // Os valores em R$ dos negócios não passam pelo JSON: vão para a tabela
 // valores_negocio, que o banco só entrega a quem pode ver (valoresNegocio.ts).
 
@@ -27,11 +36,12 @@ import { useCallback, useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import { aplicar, diferenca, iguais, type Operacao } from "@/lib/sincronizacao";
-import { DASHBOARD_ROW_ID, gravarOperacoes, novaMarca } from "@/lib/gravarDashboard";
+import { DASHBOARD_ROW_ID, faltaNoBanco, gravarOperacoes, novaMarca } from "@/lib/gravarDashboard";
+import { linhasDoLote, montarEstado, type LinhaArea } from "@/lib/estadoPorArea";
 import { separarValores, sobreporValores, type MudancaValor } from "@/lib/valoresNegocio";
 
 type Ouvinte = () => void;
-type Lote = { marca: string; ops: Operacao[] };
+type Lote = { marca: string; ops: Operacao[]; linhas: Set<string> };
 type LinhaDashboard = { data?: unknown; marcas?: unknown; updated_at?: string | null };
 
 /** Espera para juntar o que é digitado em sequência num lote só. */
@@ -40,10 +50,18 @@ const ESPERA_GRAVACAO_MS = 500;
 const ESPERA_ECO_MS = 8000;
 
 const loja = {
-  /** Última versão que veio do banco. */
+  /** "areas" lê area_state; "legado", o dashboard_state de antes da migração. */
+  modo: null as "areas" | "legado" | null,
+  /** Última versão que veio do banco, já montada. */
   servidor: null as DashboardState | null,
+  // Modo legado: a linha única.
   marcasServidor: new Set<string>(),
   carimboServidor: 0,
+  // Modo áreas: uma entrada por linha recebida.
+  linhas: new Map<string, LinhaArea>(),
+  marcasPorLinha: new Map<string, Set<string>>(),
+  carimbosPorLinha: new Map<string, number>(),
+  canalAreas: null as ReturnType<typeof supabase.channel> | null,
   /** O que a tela mostra. */
   data: null as DashboardState | null,
   carregado: false,
@@ -71,9 +89,18 @@ function avisar() {
   for (const o of loja.ouvintes) o();
 }
 
+/** O servidor que temos já inclui este lote? */
+function loteConfirmado(lote: Lote) {
+  if (loja.modo !== "areas") return loja.marcasServidor.has(lote.marca);
+  for (const id of lote.linhas) {
+    if (!loja.marcasPorLinha.get(id)?.has(lote.marca)) return false;
+  }
+  return true;
+}
+
 /** Refaz a tela: servidor + lotes que ele ainda não tem + pendentes. */
 function recalcular() {
-  loja.emVoo = loja.emVoo.filter((l) => !loja.marcasServidor.has(l.marca));
+  loja.emVoo = loja.emVoo.filter((l) => !loteConfirmado(l));
   if (!loja.servidor) return;
   let vista = loja.servidor;
   for (const lote of loja.emVoo) vista = aplicar(vista, lote.ops);
@@ -105,18 +132,73 @@ function receberDoServidor(linha: LinhaDashboard, permitirIgual = true) {
   if (primeiraVez) avisar();
 }
 
+/**
+ * Recebe linhas de area_state, da carga ou do tempo real.
+ *
+ * Cada linha tem o seu carimbo: o tempo real pode entregar fora de ordem, e
+ * uma versão mais velha de uma área não volta por cima da nova.
+ */
+function receberLinhas(linhas: LinhaArea[], permitirIgual = true) {
+  let mudou = false;
+  for (const linha of linhas) {
+    if (!linha?.id) continue;
+    const carimbo = linha.updated_at ? Date.parse(linha.updated_at) : 0;
+    const anterior = loja.carimbosPorLinha.get(linha.id) ?? 0;
+    if (carimbo && (carimbo < anterior || (!permitirIgual && carimbo === anterior))) continue;
+    loja.linhas.set(linha.id, linha);
+    loja.marcasPorLinha.set(
+      linha.id,
+      new Set(Array.isArray(linha.marcas) ? (linha.marcas as string[]) : []),
+    );
+    if (carimbo) loja.carimbosPorLinha.set(linha.id, carimbo);
+    mudou = true;
+  }
+  if (!mudou && loja.carregado) return;
+  loja.servidor = montarEstado([...loja.linhas.values()]);
+  const primeiraVez = !loja.carregado;
+  loja.carregado = true;
+  recalcular();
+  if (primeiraVez) avisar();
+}
+
 async function carregar() {
   if (loja.carregando) return loja.carregando;
-  assinarRealtime();
   loja.carregando = (async () => {
-    // "*" e não a lista de colunas: a coluna marcas só existe depois da
-    // migração, e o app precisa funcionar antes dela.
     // Os valores vêm junto, antes de a tela aparecer: editar um valor antes
     // de saber se a tabela existe o mandaria para o lugar errado.
-    const [{ data: linha }] = await Promise.all([
-      supabase.from("dashboard_state").select("*").eq("id", DASHBOARD_ROW_ID).maybeSingle(),
+    const [porArea] = await Promise.all([
+      supabase.from("area_state").select("*"),
       carregarValores(),
     ]);
+
+    if (!porArea.error && porArea.data?.length) {
+      loja.modo = "areas";
+      assinarAreas();
+      // Área que deixou de vir (a pessoa perdeu o acesso) sai da tela.
+      const vieram = new Set(porArea.data.map((l) => l.id));
+      for (const id of [...loja.linhas.keys()]) {
+        if (!vieram.has(id)) {
+          loja.linhas.delete(id);
+          loja.marcasPorLinha.delete(id);
+        }
+      }
+      receberLinhas(porArea.data as LinhaArea[]);
+      return;
+    }
+    if (porArea.error && !faltaNoBanco(porArea.error)) {
+      console.error("[dashboard] area_state não carregou:", porArea.error.message);
+    }
+
+    // Banco sem a migração (ou sem nada ainda): o dashboard_state de antes.
+    // "*" e não a lista de colunas: a coluna marcas só existe depois da
+    // migração das operações, e o app precisa funcionar antes dela.
+    loja.modo = "legado";
+    assinarRealtime();
+    const { data: linha } = await supabase
+      .from("dashboard_state")
+      .select("*")
+      .eq("id", DASHBOARD_ROW_ID)
+      .maybeSingle();
     if (linha?.data) receberDoServidor(linha as LinhaDashboard);
     else if (!loja.carregado) {
       loja.carregado = true;
@@ -128,9 +210,33 @@ async function carregar() {
   return loja.carregando;
 }
 
-/** Tabela ou coluna que ainda não existe no banco. */
-function faltaNoBanco(e: { code?: string } | null) {
-  return !!e && ["42P01", "PGRST205", "PGRST204", "42703"].includes(e.code || "");
+/**
+ * Tempo real por área. O banco só entrega a linha a quem pode vê-la, então
+ * cada um recebe só as áreas que lhe cabem, e só a que mudou.
+ *
+ * Ao conectar (e ao reconectar, depois de a rede cair) busca tudo de novo:
+ * o que mudou enquanto o canal estava fora não chega pelo canal.
+ */
+function assinarAreas() {
+  if (loja.canalAreas) return;
+  loja.canalAreas = supabase
+    .channel("area_state")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "area_state" },
+      (payload: { new?: Partial<LinhaArea> }) => {
+        if (payload.new?.id) receberLinhas([payload.new as LinhaArea], false);
+      },
+    )
+    .subscribe((status: string) => {
+      // Também na primeira vez: a carga veio antes de o canal estar de pé, e
+      // o que alguém gravou nesse meio-tempo não viria por ele.
+      if (status === "SUBSCRIBED") void recarregarDashboardState();
+    });
+  if (typeof window !== "undefined") {
+    // Fechar a aba no meio da espera de meio segundo perderia a última edição.
+    window.addEventListener("pagehide", () => void enviar());
+  }
 }
 
 async function carregarValores() {
@@ -231,7 +337,6 @@ function assinarRealtime() {
 
 function inscrever(o: Ouvinte) {
   loja.ouvintes.add(o);
-  assinarRealtime();
   if (!loja.carregado) void carregar();
   return () => {
     loja.ouvintes.delete(o);
@@ -251,7 +356,11 @@ function agendarGravacao(ms = ESPERA_GRAVACAO_MS) {
 /** Manda os pendentes como um lote. Um lote por vez, para o banco ver na ordem. */
 async function enviar() {
   if (loja.enviando || !loja.pendentes.length) return;
-  const lote: Lote = { marca: novaMarca(), ops: loja.pendentes };
+  const lote: Lote = {
+    marca: novaMarca(),
+    ops: loja.pendentes,
+    linhas: linhasDoLote(loja.pendentes),
+  };
   loja.pendentes = [];
   loja.emVoo.push(lote);
   loja.enviando = true;
@@ -339,6 +448,18 @@ export function useDashboardState(_escopo = "default") {
  */
 export async function criarDashboardStateSeVazio(inicial: DashboardState) {
   if (!loja.carregado || loja.servidor) return;
+  if (loja.modo === "areas") {
+    // O estado inteiro como uma operação: o banco divide em linhas.
+    const r = await gravarOperacoes(
+      supabase,
+      [{ op: "set", caminho: [], valor: inicial }],
+      novaMarca(),
+      () => inicial,
+    );
+    if (!r.ok) console.error("[dashboard] não criou o estado inicial:", r.erro);
+    await recarregarDashboardState();
+    return;
+  }
   const { error } = await supabase
     .from("dashboard_state")
     .insert({ id: DASHBOARD_ROW_ID, data: inicial as never });
@@ -358,5 +479,6 @@ export async function criarDashboardStateSeVazio(inicial: DashboardState) {
  */
 export function recarregarDashboardState() {
   loja.carimboServidor = 0;
+  loja.carimbosPorLinha.clear();
   return carregar();
 }

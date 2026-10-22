@@ -8,6 +8,30 @@ export type Database = {
   };
   public: {
     Tables: {
+      area_state: {
+        Row: {
+          data: Json;
+          id: string;
+          marcas: Json;
+          ordem: number;
+          updated_at: string;
+        };
+        Insert: {
+          data?: Json;
+          id: string;
+          marcas?: Json;
+          ordem?: number;
+          updated_at?: string;
+        };
+        Update: {
+          data?: Json;
+          id?: string;
+          marcas?: Json;
+          ordem?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       dashboard_state: {
         Row: {
           data: Json;
@@ -139,6 +163,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      aplicar_operacoes_areas: {
+        Args: { p_ops: Json; p_marca?: string };
+        Returns: string;
+      };
       aplicar_operacoes_dashboard: {
         Args: { p_ops: Json; p_marca?: string; p_id?: string };
         Returns: string;

@@ -19,9 +19,11 @@
     "directory": "dist/client",
     "binding": "ASSETS"
   },
-  // Acompanhamento semanal do INPI. Cron do Cloudflare e sempre UTC; Brasilia
-  // e UTC-3, entao 12:00 UTC = 9h de segunda-feira aqui.
+  // Cron do Cloudflare e sempre UTC; Brasilia e UTC-3. Os mesmos horarios
+  // estao em src/server.ts (CRON_SEMANAL, CRON_DIARIO), que decide o que roda.
+  //   0 12 * * 1 → acompanhamento semanal do INPI, segunda 9h
+  //   0 11 * * * → avisos de prazo do dia, todo dia 8h
   "triggers": {
-    "crons": ["0 12 * * 1"]
+    "crons": ["0 12 * * 1", "0 11 * * *"]
   }
 }

@@ -93,7 +93,6 @@ import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
-import { useDeadlineCheck } from "@/hooks/useDeadlineCheck";
 
 const AREA_ICONS = {
   shield: Shield,
@@ -5665,7 +5664,7 @@ export default function App() {
   );
   const activeId = navActiveId(view);
 
-  useDeadlineCheck(data, currentUser);
+  // Os avisos de prazo saem do worker, uma vez por dia (lib/prazos.ts).
 
   useEffect(() => {
     if (!canAccessView(view, allowedModules)) {
