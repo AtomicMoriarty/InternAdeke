@@ -25,6 +25,7 @@ import {
   sincronizarNomes,
   type ClienteDiretorio,
 } from "@/lib/diretorioClientes";
+import { nomePadronizado, parecidosCom } from "@/lib/padronizacao";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import { MODULO_COLOR, moduloOf } from "@/lib/areas";
 
@@ -40,6 +41,7 @@ type Props = {
 export default function DiretorioClientes({ data, setData, planosDaArea, irParaArea }: Props) {
   const [busca, setBusca] = useState("");
   const [novoNome, setNovoNome] = useState("");
+  const [parecidos, setParecidos] = useState<string[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
   const [mostrarInativos, setMostrarInativos] = useState(false);
   const [importando, setImportando] = useState(false);
@@ -59,17 +61,26 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
     );
   }, [data, busca, mostrarInativos]);
 
-  function cadastrar() {
-    const nome = novoNome.trim();
+  function cadastrar(mesmoAssim = false) {
+    // Nome no padrão desde a entrada: "NOVA EMPRESA LTDA" vira "Nova Empresa LTDA".
+    const nome = nomePadronizado(novoNome, { cliente: true });
     if (!nome) return;
     if (jaExiste(data, nome)) {
       setErro(`Já existe um cliente chamado "${nome}".`);
+      return;
+    }
+    // Parecido com alguém que já existe: pergunta antes, porque é assim que
+    // nasceram "GIOVAM" ao lado de "GIOVAN FUSIEGER" e "OLRA" ao lado de "ORLA".
+    const parecidos = parecidosCom(data, nome);
+    if (parecidos.length && !mesmoAssim) {
+      setParecidos(parecidos);
       return;
     }
     const novo = clienteNovo(nome);
     setData((d) => salvarCliente(d, novo));
     setNovoNome("");
     setErro("");
+    setParecidos([]);
     setAberto(novo.id);
   }
 
@@ -116,12 +127,13 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
           onChange={(e) => {
             setNovoNome(e.target.value);
             setErro("");
+            setParecidos([]);
           }}
           onKeyDown={(e) => e.key === "Enter" && cadastrar()}
           placeholder="Nome do novo cliente"
           style={{ ...campo, flex: "1 1 220px", maxWidth: 300 }}
         />
-        <button onClick={cadastrar} disabled={!novoNome.trim()} style={botaoPrincipal}>
+        <button onClick={() => cadastrar()} disabled={!novoNome.trim()} style={botaoPrincipal}>
           <Plus size={14} /> Cadastrar
         </button>
         <button
@@ -146,6 +158,43 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
         <p style={{ fontSize: 12, color: "#B91C1C", marginBottom: 12 }}>
           {erro} Procure na busca acima em vez de cadastrar de novo.
         </p>
+      )}
+
+      {parecidos.length > 0 && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "#92400E",
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 8,
+            padding: "8px 12px",
+            marginBottom: 12,
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            Já existe{parecidos.length > 1 ? "m" : ""} cliente{parecidos.length > 1 ? "s" : ""}{" "}
+            parecido{parecidos.length > 1 ? "s" : ""}: <strong>{parecidos.join(", ")}</strong>. É o
+            mesmo?
+          </span>
+          <button
+            onClick={() => {
+              setBusca(parecidos[0]);
+              setParecidos([]);
+              setNovoNome("");
+            }}
+            style={botaoMini}
+          >
+            É o mesmo — abrir
+          </button>
+          <button onClick={() => cadastrar(true)} style={botaoMini}>
+            É outro — cadastrar
+          </button>
+        </div>
       )}
 
       {lista.length === 0 && (

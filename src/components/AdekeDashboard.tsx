@@ -73,6 +73,7 @@ const AjudanteComercial = lazy(() => import("@/components/AjudanteComercial"));
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
 const DiretorioClientes = lazy(() => import("@/components/DiretorioClientes"));
 const Triagem = lazy(() => import("@/components/Triagem"));
+const ArrumarCadastro = lazy(() => import("@/components/ArrumarCadastro"));
 import { renomearPlanoImportado } from "@/lib/importTrello";
 import {
   useDashboardState,
@@ -100,7 +101,8 @@ import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
-import { uid, hojeBR as todayBR } from "@/lib/comum";
+import { uid, hojeBR as todayBR, semAcento } from "@/lib/comum";
+import { nomePadronizado } from "@/lib/padronizacao";
 
 const AREA_ICONS = {
   shield: Shield,
@@ -3308,6 +3310,7 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
   const [newTipo, setNewTipo] = useState(TIPOS_ITEM[0]);
   const [newResp, setNewResp] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [repetida, setRepetida] = useState(null);
   const [dragItemId, setDragItemId] = useState(null);
   const [dragOverItemId, setDragOverItemId] = useState(null);
   const [modalItemId, setModalItemId] = useState(null);
@@ -3408,9 +3411,20 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
       },
     });
   }
-  function addItem() {
-    if (!newName.trim()) return;
-    const nome = newName.trim();
+  function addItem(mesmoAssim = false) {
+    // Nome no padrão desde a entrada ("CONTRATO SOCIAL" vira "Contrato Social").
+    const nome = nomePadronizado(newName);
+    if (!nome) return;
+    // Já existe uma demanda com este nome neste cliente? Pergunta antes: é
+    // assim que a mesma demanda foi parar quatro vezes no mesmo cliente.
+    const repetida = (cliente?.planos || [])
+      .flatMap((p) => p.items || [])
+      .find((it) => semAcento(it.name) === semAcento(nome));
+    if (repetida && !mesmoAssim) {
+      setRepetida(repetida);
+      return;
+    }
+    setRepetida(null);
     const agora = new Date().toISOString();
     const item = {
       id: `it${uid()}`,
@@ -3771,36 +3785,18 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select
-              value={newTipo}
-              onChange={(e) => setNewTipo(e.target.value)}
-              style={{
-                ...inp,
-                width: 160,
-                cursor: "pointer",
-              }}
-            >
-              {TIPOS_ITEM.map((t) => (
-                <option key={t} value={t} style={{ background: "#F8FAFC" }}>
-                  {t}
-                </option>
-              ))}
-            </select>
             <input
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setRepetida(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && addItem()}
-              placeholder="Nome do item..."
+              placeholder="Nome da demanda..."
               style={{ ...inp, flex: 1, minWidth: 200 }}
             />
-            <input
-              value={newResp}
-              onChange={(e) => setNewResp(e.target.value)}
-              placeholder="Responsável..."
-              style={{ ...inp, width: 180 }}
-            />
             <button
-              onClick={addItem}
+              onClick={() => addItem()}
               style={{
                 background: area.color,
                 border: "none",
@@ -3835,6 +3831,44 @@ function PlanoView({ areaId, clienteId, planoId, data, setData, nav }) {
               <X size={14} />
             </button>
           </div>
+          {repetida && (
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: "#92400E",
+                background: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                borderRadius: 8,
+                padding: "8px 12px",
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <span>
+                Este cliente já tem a demanda <strong>{repetida.name}</strong>. É a mesma?
+              </span>
+              <button
+                onClick={() => {
+                  setModalItemId(repetida.id);
+                  setRepetida(null);
+                  setNewName("");
+                  setShowForm(false);
+                }}
+                style={{ ...inp, cursor: "pointer", fontWeight: 600 }}
+              >
+                É a mesma — abrir
+              </button>
+              <button
+                onClick={() => addItem(true)}
+                style={{ ...inp, cursor: "pointer", fontWeight: 600 }}
+              >
+                É outra — criar
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -5543,6 +5577,13 @@ const NAV = [
     view: { page: "triagem" },
   },
   {
+    id: "cadastro",
+    label: "Arrumar cadastro",
+    Icon: Sparkles,
+    color: "#0F766E",
+    view: { page: "cadastro" },
+  },
+  {
     id: "clientes",
     label: "Clientes",
     Icon: Building2,
@@ -5616,6 +5657,7 @@ function navActiveId(view) {
   if (view.page === "ajudante") return "ajudante";
   if (view.page === "clientes") return "clientes";
   if (view.page === "triagem") return "triagem";
+  if (view.page === "cadastro") return "cadastro";
   return "";
 }
 
@@ -5659,10 +5701,15 @@ export default function App() {
   const profiles = useProfiles();
   const currentProfile = currentUser ? profiles.find((p) => p.id === currentUser.id) : null;
   const allowedModules = allowedModulesFor(currentProfile);
+  const ehAdmin =
+    currentProfile?.role === "admin" ||
+    currentUser?.email?.toLowerCase() === "portoepacca@portoepacca.com";
   const visibleNav = NAV.filter(
     (item) =>
       item.id === "dashboard" ||
       item.id === "triagem" ||
+      // Arrumar o cadastro mexe em clientes de todas as áreas: só admin.
+      (item.id === "cadastro" && ehAdmin) ||
       allowedModules.includes(item.id) ||
       (item.id === "ajudante" && allowedModules.includes("comercial")) ||
       (item.id === "clientes" && allowedModules.length > 0),
@@ -6100,6 +6147,14 @@ export default function App() {
                 )}
                 {view.page === "ajudante" && allowedModules.includes("comercial") && (
                   <AjudanteComercial />
+                )}
+                {view.page === "cadastro" && ehAdmin && (
+                  <ArrumarCadastro
+                    data={data}
+                    setData={setData}
+                    abrirCard={(c) => setCardDaTriagem(c)}
+                    irParaTriagem={() => setView({ page: "triagem" })}
+                  />
                 )}
                 {view.page === "triagem" && (
                   <Triagem
