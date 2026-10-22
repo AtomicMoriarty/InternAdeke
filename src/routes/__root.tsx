@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import BuscaGlobal, { type Destino } from "@/components/BuscaGlobal";
+import CronometroAtivo from "@/components/CronometroAtivo";
 import { useProfiles } from "@/lib/profiles";
 import { moduloOf } from "@/lib/areas";
 
@@ -191,6 +192,24 @@ function RootComponent() {
               );
             }
           }}
+        />
+      )}
+      {session && (
+        <CronometroAtivo
+          userId={session.user.id}
+          abrirCard={(a) =>
+            // Mesmo deep-link da busca e das notificações.
+            router.navigate({
+              to: "/",
+              search: {
+                cliente: a.cliente_id,
+                modulo: moduloOf(a.area_id),
+                plano: a.plano_id || a.cliente_id,
+                item: a.item_id,
+                abrir: "1",
+              } as never,
+            })
+          }
         />
       )}
       {session && (

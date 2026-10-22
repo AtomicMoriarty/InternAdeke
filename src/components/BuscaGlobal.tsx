@@ -17,6 +17,7 @@ import { useDashboardState } from "@/lib/useDashboardState";
 import { flattenDashboard, type FlatCard } from "@/lib/flattenItems";
 import { clientesAtivos } from "@/lib/diretorioClientes";
 import { procurar, type Destino } from "@/lib/busca";
+import { useProfiles } from "@/lib/profiles";
 
 export type { Destino };
 
@@ -62,7 +63,15 @@ function Paleta({ fechar, aoEscolher }: { fechar: () => void; aoEscolher: (d: De
 
   const cards = useMemo(() => (data ? flattenDashboard(data) : []), [data]);
   const clientes = useMemo(() => (data ? clientesAtivos(data) : []), [data]);
-  const achados = useMemo(() => procurar(termo, cards, clientes), [termo, cards, clientes]);
+  const perfis = useProfiles();
+  const pessoas = useMemo(
+    () => perfis.map((p) => ({ id: p.id, nome: p.display_name, usuario: p.username })),
+    [perfis],
+  );
+  const achados = useMemo(
+    () => procurar(termo, cards, clientes, 30, pessoas),
+    [termo, cards, clientes, pessoas],
+  );
 
   useEffect(() => {
     setCursor(0);
@@ -164,6 +173,10 @@ function Paleta({ fechar, aoEscolher }: { fechar: () => void; aoEscolher: (d: De
               <br />
               As palavras podem vir fora de ordem: &quot;incrivel aditivo&quot; acha
               &quot;Elaboração 10º Aditivo FM&quot; da INCRÍVEL.
+              <br />
+              Filtros: <code>@pessoa</code> · <code>#etiqueta</code> · <code>prazo:vencido</code> /{" "}
+              <code>hoje</code> / <code>semana</code> / <code>sem</code> · <code>area:inpi</code> ·{" "}
+              <code>status:aberto</code>. Ex.: &quot;@bruno prazo:semana&quot;.
             </p>
           )}
           {loaded && termo && !achados.length && (

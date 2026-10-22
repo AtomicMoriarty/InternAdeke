@@ -13,6 +13,7 @@
 
 import type { DashboardState, Item, Comentario } from "@/lib/dashboardTypes";
 import { globalDeQualquerArea } from "@/lib/etapas";
+import { dataDoPrazo } from "@/lib/prazos";
 
 /** Campo do item que liga o acompanhamento. */
 export const CAMPO_ACOMPANHAMENTO = "acompanhamentoSemanal";
@@ -34,12 +35,9 @@ export const MAX_ACOMPANHAMENTOS_POR_ITEM = 12;
 
 const DIA_MS = 86400000;
 
+/** Os dois formatos de prazo do estado (prazos.ts), não só o "DD/MM/AAAA". */
 function parseBR(s?: string | null): Date | null {
-  if (!s) return null;
-  const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return null;
-  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  return isNaN(d.getTime()) ? null : d;
+  return dataDoPrazo(s);
 }
 
 function diasEntre(a: Date, b: Date): number {

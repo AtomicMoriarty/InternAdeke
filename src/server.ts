@@ -4,7 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
-import { gravarDiferenca } from "./lib/gravarDashboard";
+import { gravarDiferenca, lerEstadoCompleto } from "./lib/gravarDashboard";
+import { avisosDePrazo, chaveAviso, diaNoEscritorio } from "./lib/prazos";
+import { gerarRecorrencias } from "./lib/recorrencia";
+import { moduloOf } from "./lib/areas";
 import type { Area, Cliente, Plano, Item } from "./lib/dashboardTypes";
 
 /** Segredos e bindings que o worker espera encontrar no ambiente. */
@@ -280,8 +283,14 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
   if (request.method === "OPTIONS") return apiJson({ ok: true });
   if (request.method !== "POST") return apiJson({ error: "Use POST" }, { status: 405 });
 
+  // Sem segredo configurado, recusa. Antes passava direto: qualquer um que
+  // achasse a URL gravava cards no escritório e, errando o cliente, recebia a
+  // lista de clientes da área na resposta.
   const secret = env?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
-  if (secret && request.headers.get("x-granola-secret") !== secret) {
+  if (!secret) {
+    return apiJson({ error: "Webhook sem segredo configurado" }, { status: 503 });
+  }
+  if (request.headers.get("x-granola-secret") !== secret) {
     return apiJson({ error: "Invalid webhook secret" }, { status: 401 });
   }
 
@@ -322,13 +331,11 @@ async function handleGranolaRisk(request: Request, env: WorkerEnv): Promise<Resp
     if (authError) return apiJson({ error: authError.message }, { status: 401 });
   }
 
-  const { data: row, error } = await supabase
-    .from("dashboard_state")
-    .select("data")
-    .eq("id", "main")
-    .maybeSingle();
-  if (error) return apiJson({ error: error.message }, { status: 500 });
-  const dashboard = row?.data;
+  const lido = await lerEstadoCompleto(supabase);
+  if (!lido.ok) return apiJson({ error: lido.erro }, { status: 500 });
+  // O que segue lê o estado sem tipo, como sempre leu.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dashboard: any = lido.data;
   // O que segue mexe no objeto direto; a cópia é o "antes" para gravar só a
   // diferença, sem apagar o que o escritório editou enquanto isto rodava.
   const original = structuredClone(dashboard);
@@ -477,40 +484,106 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
  * grava de volta. Roda pelo Cron Trigger, sem depender de alguem com o app
  * aberto. Idempotente — disparar duas vezes na mesma semana nao duplica.
  */
-async function rodarAcompanhamentoSemanal(env: WorkerEnv) {
+/** Cliente com a chave de serviço, para as rotinas do worker. */
+function clienteDeServico(env: WorkerEnv) {
   const supabaseUrl = env?.SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceKey = env?.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return { ok: false, erro: "Faltam SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY no worker" };
-  }
-
-  const supabase = createClient(supabaseUrl, serviceKey, {
+  if (!supabaseUrl || !serviceKey) return null;
+  return createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
 
-  const { data: row, error } = await supabase
-    .from("dashboard_state")
-    .select("data")
-    .eq("id", "main")
-    .maybeSingle();
-  if (error) return { ok: false, erro: error.message };
-  if (!row?.data) return { ok: false, erro: "dashboard_state vazio" };
+const SEM_CHAVE = "Faltam SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY no worker";
 
-  const r = aplicarAcompanhamentoSemanal(row.data, new Date());
+async function rodarAcompanhamentoSemanal(env: WorkerEnv) {
+  const supabase = clienteDeServico(env);
+  if (!supabase) return { ok: false, erro: SEM_CHAVE };
+
+  const lido = await lerEstadoCompleto(supabase);
+  if (!lido.ok) return { ok: false, erro: lido.erro };
+
+  const r = aplicarAcompanhamentoSemanal(lido.data, new Date());
   if (!r.comentariosCriados) {
     return { ok: true, semana: r.semana, criados: 0, visitados: r.itensVisitados };
   }
 
-  const gravado = await gravarDiferenca(supabase, row.data, r.data);
+  const gravado = await gravarDiferenca(supabase, lido.data, r.data);
   if (!gravado.ok) return { ok: false, erro: gravado.erro };
 
   return { ok: true, semana: r.semana, criados: r.comentariosCriados, visitados: r.itensVisitados };
 }
 
+/**
+ * A rotina de cada manhã: primeiro os cards que se repetem (lib/recorrencia.ts),
+ * depois os avisos de prazo — já contando com o prazo dos cards que acabaram
+ * de nascer. Roda pelo Cron Trigger e pode ser disparada à mão: as duas partes
+ * sabem o que já fizeram, então repetir não duplica.
+ */
+async function rodarAvisosDePrazo(env: WorkerEnv) {
+  const supabase = clienteDeServico(env);
+  if (!supabase) return { ok: false, erro: SEM_CHAVE };
+
+  const lido = await lerEstadoCompleto(supabase);
+  if (!lido.ok) return { ok: false, erro: lido.erro };
+
+  const agora = new Date();
+
+  const repetidos = gerarRecorrencias(lido.data, agora);
+  if (repetidos.criados) {
+    const gravado = await gravarDiferenca(supabase, lido.data, repetidos.data);
+    if (!gravado.ok) return { ok: false, erro: `recorrência: ${gravado.erro}` };
+  }
+  // O dia em Brasília começa às 03:00 UTC; buscar desde 27 horas atrás e
+  // filtrar pelo dia cobre o horário de verão, se ele voltar.
+  const desde = new Date(agora.getTime() - 27 * 3600_000).toISOString();
+  const { data: recentes, error } = await supabase
+    .from("notifications")
+    .select("user_id, item_id, created_at")
+    .eq("tipo", "prazo")
+    .gte("created_at", desde);
+  if (error) return { ok: false, erro: error.message };
+
+  const hoje = diaNoEscritorio(agora);
+  const jaAvisados = new Set(
+    (recentes || [])
+      .filter((n) => n.item_id && diaNoEscritorio(new Date(n.created_at)) === hoje)
+      .map((n) => chaveAviso(n.user_id, n.item_id as string)),
+  );
+
+  const avisos = avisosDePrazo(repetidos.data, agora, jaAvisados, moduloOf);
+  if (avisos.length) {
+    const { error: erroInsert } = await supabase.from("notifications").insert(avisos);
+    if (erroInsert) return { ok: false, erro: erroInsert.message };
+  }
+  return { ok: true, dia: hoje, criados: avisos.length, repetidos: repetidos.criados };
+}
+
+/** Rota manual, protegida pelo mesmo segredo do webhook do Granola. */
+function autorizadoManual(request: Request, url: URL, env: WorkerEnv) {
+  const segredo = env?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
+  const enviado = request.headers.get("x-webhook-secret") || url.searchParams.get("secret");
+  return !!segredo && enviado === segredo;
+}
+
+// Os horários dos Cron Triggers, em wrangler.deploy.jsonc. Cron do Cloudflare
+// é sempre UTC; Brasília é UTC-3.
+const CRON_SEMANAL = "0 12 * * 1"; // segunda, 9h
+const CRON_DIARIO = "0 11 * * *"; // todo dia, 8h
+
 export default {
-  async scheduled(_event: unknown, env: WorkerEnv) {
-    const r = await rodarAcompanhamentoSemanal(env);
-    console.log("[acompanhamento semanal]", JSON.stringify(r));
+  async scheduled(event: { cron?: string } | undefined, env: WorkerEnv) {
+    const cron = event?.cron;
+    if (cron === CRON_DIARIO) {
+      console.log("[avisos de prazo]", JSON.stringify(await rodarAvisosDePrazo(env)));
+    }
+    // Sem cron conhecido (disparo de teste) roda o semanal, como antes.
+    if (cron === CRON_SEMANAL || !cron) {
+      console.log(
+        "[acompanhamento semanal]",
+        JSON.stringify(await rodarAcompanhamentoSemanal(env)),
+      );
+    }
   },
 
   async fetch(request: Request, env: unknown, ctx: unknown) {
@@ -519,16 +592,19 @@ export default {
       if (url.pathname === "/api/granola-risk") {
         return await handleGranolaRisk(request, env as WorkerEnv);
       }
-      // Disparo manual, para conferir sem esperar a segunda-feira. Protegido
-      // pelo mesmo segredo do webhook do Granola.
-      if (url.pathname === "/api/acompanhamento-semanal") {
-        const segredo =
-          (env as WorkerEnv)?.GRANOLA_WEBHOOK_SECRET || process.env.GRANOLA_WEBHOOK_SECRET;
-        const enviado = url.searchParams.get("secret") || request.headers.get("x-webhook-secret");
-        if (!segredo || enviado !== segredo) {
+      // Disparos manuais, para conferir sem esperar o cron.
+      if (
+        url.pathname === "/api/acompanhamento-semanal" ||
+        url.pathname === "/api/avisos-de-prazo"
+      ) {
+        if (!autorizadoManual(request, url, env as WorkerEnv)) {
           return apiJson({ error: "Nao autorizado" }, { status: 401 });
         }
-        return apiJson(await rodarAcompanhamentoSemanal(env as WorkerEnv));
+        return apiJson(
+          url.pathname === "/api/avisos-de-prazo"
+            ? await rodarAvisosDePrazo(env as WorkerEnv)
+            : await rodarAcompanhamentoSemanal(env as WorkerEnv),
+        );
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

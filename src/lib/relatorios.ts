@@ -1,6 +1,7 @@
 // Cálculos dos relatórios. Separado da tela para poder ser testado sozinho.
 import { moduloOf, MODULO_PRODUTOS } from "@/lib/areas";
 import { globalDeQualquerArea } from "@/lib/etapas";
+import { dataDoPrazo } from "@/lib/prazos";
 import type { DashboardState } from "@/lib/dashboardTypes";
 
 export type Transicao = { de: string; para: string; em: string };
@@ -38,12 +39,15 @@ export type ItemPlano = {
 
 const DIA_MS = 86400000;
 
+/**
+ * Lê uma data do estado: "31/12/2026", "31/12/2026 14:30" ou "2026-12-31T14:30".
+ *
+ * Só aceitava o primeiro formato, e o card grava prazo no último (campo de
+ * data e hora): todo prazo posto pelo card sumia da tela Eu, dos relatórios de
+ * atraso e da linha do tempo, como se não existisse.
+ */
 export function parseBR(s?: string | null): Date | null {
-  if (!s) return null;
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  return isNaN(d.getTime()) ? null : d;
+  return dataDoPrazo(s);
 }
 
 function meiaNoite(d: Date) {

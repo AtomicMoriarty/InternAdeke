@@ -6,6 +6,8 @@
 import type { FlatCard } from "@/lib/flattenItems";
 import { AREAS, areaById } from "@/lib/areas";
 import { corDoEstado, globalDeQualquerArea } from "@/lib/etapas";
+import { cardPassa, lerFiltros, temFiltro, type PessoaBusca } from "@/lib/filtrosBusca";
+import { diaNoEscritorio } from "@/lib/prazos";
 
 /** Para onde ir quando alguém escolhe um resultado. */
 export type Destino =
@@ -41,17 +43,27 @@ function semAcento(s: string) {
  * texto do item — assim "incrivel aditivo" acha o card certo mesmo com as
  * palavras separadas e fora de ordem, que é como as pessoas lembram das
  * coisas.
+ *
+ * Operadores (@pessoa, #etiqueta, prazo:, area:, status: — filtrosBusca.ts)
+ * filtram os cards; com algum deles, telas e clientes saem da lista.
  */
 export function procurar(
   termo: string,
   cards: FlatCard[],
   clientes: { id: string; nome: string; apelidos?: string[] }[],
   limite = 30,
+  pessoas: PessoaBusca[] = [],
+  agora = new Date(),
 ): Resultado[] {
-  const pedacos = semAcento(termo).split(/\s+/).filter(Boolean);
-  if (!pedacos.length) return [];
+  const filtros = lerFiltros(termo);
+  const comFiltro = temFiltro(filtros);
+  const pedacos = semAcento(filtros.texto).split(/\s+/).filter(Boolean);
+  if (!pedacos.length && !comFiltro) return [];
+  const hoje = diaNoEscritorio(agora);
 
   const casa = (texto: string) => {
+    // Só operadores, sem texto: todo card que passou neles serve.
+    if (!pedacos.length) return 1;
     const t = semAcento(texto);
     if (!pedacos.every((p) => t.includes(p))) return null;
     // Quem começa com o que foi digitado aparece antes.
@@ -60,7 +72,7 @@ export function procurar(
 
   const out: Resultado[] = [];
 
-  for (const a of AREAS) {
+  for (const a of comFiltro ? [] : AREAS) {
     const peso = casa(`${a.name} ${a.modulo}`);
     if (peso === null) continue;
     out.push({
@@ -73,13 +85,14 @@ export function procurar(
       peso,
     });
   }
-  for (const [nome, pagina, rota] of [
+  const telas = [
     ["Quadro Geral", "", "/quadro"],
     ["Eu", "", "/eu"],
     ["Triagem", "triagem", "/"],
     ["Clientes", "clientes", "/"],
     ["Painel Geral", "dashboard", "/"],
-  ] as const) {
+  ] as const;
+  for (const [nome, pagina, rota] of comFiltro ? [] : telas) {
     const peso = casa(nome);
     if (peso === null) continue;
     out.push({
@@ -93,7 +106,7 @@ export function procurar(
     });
   }
 
-  for (const c of clientes) {
+  for (const c of comFiltro ? [] : clientes) {
     const peso = casa(`${c.nome} ${(c.apelidos || []).join(" ")}`);
     if (peso === null) continue;
     out.push({
@@ -108,6 +121,7 @@ export function procurar(
   }
 
   for (const c of cards) {
+    if (comFiltro && !cardPassa(c, filtros, hoje, pessoas)) continue;
     // A etapa entra na busca: "oposição" e "prazo recursal" são como as
     // pessoas perguntam pelo trabalho do INPI, tanto quanto pelo nome da marca.
     const peso = casa(

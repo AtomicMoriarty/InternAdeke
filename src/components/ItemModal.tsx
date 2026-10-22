@@ -14,10 +14,9 @@ import {
   ListChecks,
   Trash2,
   ChevronDown,
-  Maximize2,
   Eye,
-  MoreHorizontal,
   Link2,
+  Play,
 } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -78,11 +77,16 @@ import {
 } from "@/lib/registros";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
+import { CAMPO_RECORRENCIA, FREQUENCIAS, ROTULO_FREQUENCIA, frequenciaDo } from "@/lib/recorrencia";
+import TempoDoCard from "@/components/TempoDoCard";
+import type { AlvoDoTempo } from "@/lib/tempo";
+import { iniciarCronometro } from "@/lib/apontamentos";
 import {
   enviarAnexo,
   linkTemporario,
   apagarAnexo,
   formatarTamanho,
+  linkSeguro,
   TAMANHO_MAXIMO,
 } from "@/lib/anexos";
 
@@ -400,6 +404,23 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
+  // A folha de horas guarda onde o tempo foi gasto com os nomes de hoje: o
+  // relatório mostra o que era a demanda naquele dia, mesmo se mudar de nome.
+  const alvoDoTempo: AlvoDoTempo = {
+    area_id: areaId,
+    cliente_id: clienteId,
+    cliente_dir_id: ehProduto ? null : cliente?.clienteId || null,
+    cliente_nome: cliente?.name || "",
+    plano_id: ehProduto ? null : planoId,
+    plano_nome: ehProduto ? "" : plano?.name || "",
+    item_id: itemId,
+    item_nome: item.name || "",
+  };
+  const ehAdminTempo =
+    currentProfile?.role === "admin" ||
+    currentUser?.email?.toLowerCase() === "portoepacca@portoepacca.com";
+  const seguidores: string[] = Array.isArray(item.seguidores) ? item.seguidores : [];
+  const sigo = !!currentUser && seguidores.includes(currentUser.id);
   const acompanhando = temAcompanhamento(item);
   // Campos que so existem no Comercial: um item la e um negocio.
   // Um card da area comercial e um negocio do funil — menos quando nasceu de
@@ -687,8 +708,13 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   }
 
   function addAnexo() {
-    const url = newAnexoUrl.trim();
-    if (!url) return;
+    if (!newAnexoUrl.trim()) return;
+    const url = linkSeguro(newAnexoUrl);
+    if (!url) {
+      setErroAnexo("Link inválido. Use um endereço que comece com http:// ou https://.");
+      return;
+    }
+    setErroAnexo("");
     patchItem({
       anexos: [
         ...(item.anexos || []),
@@ -709,7 +735,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     if (!arquivo) return;
     setErroAnexo("");
     setEnviandoAnexo(true);
-    const r = await enviarAnexo(arquivo, itemId, {
+    const r = await enviarAnexo(arquivo, areaId, itemId, {
       id: currentUser?.id || null,
       nome: currentProfile?.display_name || currentUser?.email || "sistema",
     });
@@ -739,7 +765,10 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   /** O arquivo e privado: abre por link assinado, gerado na hora. */
   async function abrirAnexo(anexo: Anexo) {
     if (!anexo.caminho) {
-      if (anexo.url) window.open(anexo.url, "_blank", "noreferrer");
+      // Links gravados antes da conferência também passam por ela ao abrir.
+      const link = linkSeguro(anexo.url);
+      if (link) window.open(link, "_blank", "noopener,noreferrer");
+      else if (anexo.url) setErroAnexo("Este link não é um endereço web válido e não foi aberto.");
       return;
     }
     const url = await linkTemporario(anexo.caminho);
@@ -867,15 +896,39 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
             style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0, paddingTop: 4 }}
           >
             <BotaoCopiarLink itemId={itemId} />
-            <button title="Maximizar" style={iconBtn}>
-              <Maximize2 size={15} color="#94A3B8" />
-            </button>
-            <button title="Visualizar" style={iconBtn}>
-              <Eye size={15} color="#94A3B8" />
-            </button>
-            <button title="Opções" style={iconBtn}>
-              <MoreHorizontal size={15} color="#94A3B8" />
-            </button>
+            {/* Seguir, como o "watch" do Trello: quem segue recebe no sino os
+                comentários e as mudanças de status, sem ser responsável. */}
+            {currentUser && (
+              <button
+                onClick={() => {
+                  const atuais = Array.isArray(item.seguidores) ? item.seguidores : [];
+                  patchItem({
+                    seguidores: sigo
+                      ? atuais.filter((id: string) => id !== currentUser.id)
+                      : [...atuais, currentUser.id],
+                  });
+                }}
+                title={
+                  sigo
+                    ? "Você segue este card. Clique para deixar de seguir"
+                    : "Seguir: receber no sino os comentários e mudanças de status"
+                }
+                style={{
+                  ...iconBtn,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: sigo ? "#CCFBF1" : iconBtn.background,
+                }}
+              >
+                <Eye size={15} color={sigo ? "#0D9488" : "#94A3B8"} />
+                {seguidores.length > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0D9488" }}>
+                    {seguidores.length}
+                  </span>
+                )}
+              </button>
+            )}
             <button onClick={onClose} style={{ ...iconBtn, marginLeft: 4 }} title="Fechar">
               <X size={17} color="#475569" />
             </button>
@@ -1128,6 +1181,32 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Repetição: ao finalizar, o próximo card nasce na manhã
+                  seguinte com o prazo empurrado um período (lib/recorrencia.ts). */}
+              <div>
+                <Label>Repetir</Label>
+                <select
+                  value={frequenciaDo(item) ?? ""}
+                  onChange={(e) => patchItem({ [CAMPO_RECORRENCIA]: e.target.value || undefined })}
+                  title="Ao finalizar este card, o próximo é criado na manhã seguinte, com o prazo seguinte"
+                  style={{ ...fieldStyle, width: 150 }}
+                >
+                  <option value="">Não repete</option>
+                  {FREQUENCIAS.map((f) => (
+                    <option key={f} value={f}>
+                      {ROTULO_FREQUENCIA[f]}
+                    </option>
+                  ))}
+                </select>
+                {frequenciaDo(item) && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#64748B", maxWidth: 150 }}>
+                    {item.recorrenciaProxima
+                      ? "Próximo card já criado"
+                      : "Ao finalizar, o próximo nasce na manhã seguinte"}
+                  </div>
+                )}
               </div>
 
               {/* Acompanhamento semanal: opt-in por card, para o registro
@@ -1811,6 +1890,19 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               </div>
             )}
 
+            {/* Folha de horas: cronômetro e lançamentos desta demanda. */}
+            <div style={{ marginBottom: 22 }}>
+              <TempoDoCard
+                alvo={alvoDoTempo}
+                subdemandas={checklist.map((ck: ItemChecklist) => ({ id: ck.id, text: ck.text }))}
+                userId={currentUser?.id || null}
+                ehAdmin={ehAdminTempo}
+                nomePessoa={(id: string) =>
+                  profiles.find((p) => p.id === id)?.display_name || "Alguém"
+                }
+              />
+            </div>
+
             {/* Checklist */}
             {(checklist.length > 0 || showCheckForm) && (
               <div style={{ marginBottom: 22 }}>
@@ -1898,6 +1990,27 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                           textDecoration: ck.done ? "line-through" : "none",
                         }}
                       />
+                      {currentUser && !ck.done && (
+                        <button
+                          onClick={() =>
+                            void iniciarCronometro({
+                              ...alvoDoTempo,
+                              subitem_id: ck.id,
+                              subitem_nome: ck.text,
+                            })
+                          }
+                          title="Cronometrar esta subdemanda"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 2,
+                            lineHeight: 0,
+                          }}
+                        >
+                          <Play size={12} color="#0F766E" />
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteCheck(ck.id)}
                         style={{
