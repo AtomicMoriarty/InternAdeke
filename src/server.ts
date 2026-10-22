@@ -6,6 +6,7 @@ import { renderErrorPage } from "./lib/error-page";
 import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
 import { gravarDiferenca, lerEstadoCompleto } from "./lib/gravarDashboard";
 import { avisosDePrazo, chaveAviso, diaNoEscritorio } from "./lib/prazos";
+import { gerarRecorrencias } from "./lib/recorrencia";
 import { moduloOf } from "./lib/areas";
 import type { Area, Cliente, Plano, Item } from "./lib/dashboardTypes";
 
@@ -514,9 +515,10 @@ async function rodarAcompanhamentoSemanal(env: WorkerEnv) {
 }
 
 /**
- * Avisos de prazo do dia. Roda todo dia de manhã pelo Cron Trigger e pode ser
- * disparado à mão: o que já foi avisado hoje vem do banco, então repetir não
- * duplica.
+ * A rotina de cada manhã: primeiro os cards que se repetem (lib/recorrencia.ts),
+ * depois os avisos de prazo — já contando com o prazo dos cards que acabaram
+ * de nascer. Roda pelo Cron Trigger e pode ser disparada à mão: as duas partes
+ * sabem o que já fizeram, então repetir não duplica.
  */
 async function rodarAvisosDePrazo(env: WorkerEnv) {
   const supabase = clienteDeServico(env);
@@ -526,6 +528,12 @@ async function rodarAvisosDePrazo(env: WorkerEnv) {
   if (!lido.ok) return { ok: false, erro: lido.erro };
 
   const agora = new Date();
+
+  const repetidos = gerarRecorrencias(lido.data, agora);
+  if (repetidos.criados) {
+    const gravado = await gravarDiferenca(supabase, lido.data, repetidos.data);
+    if (!gravado.ok) return { ok: false, erro: `recorrência: ${gravado.erro}` };
+  }
   // O dia em Brasília começa às 03:00 UTC; buscar desde 27 horas atrás e
   // filtrar pelo dia cobre o horário de verão, se ele voltar.
   const desde = new Date(agora.getTime() - 27 * 3600_000).toISOString();
@@ -543,12 +551,12 @@ async function rodarAvisosDePrazo(env: WorkerEnv) {
       .map((n) => chaveAviso(n.user_id, n.item_id as string)),
   );
 
-  const avisos = avisosDePrazo(lido.data, agora, jaAvisados, moduloOf);
+  const avisos = avisosDePrazo(repetidos.data, agora, jaAvisados, moduloOf);
   if (avisos.length) {
     const { error: erroInsert } = await supabase.from("notifications").insert(avisos);
     if (erroInsert) return { ok: false, erro: erroInsert.message };
   }
-  return { ok: true, dia: hoje, criados: avisos.length };
+  return { ok: true, dia: hoje, criados: avisos.length, repetidos: repetidos.criados };
 }
 
 /** Rota manual, protegida pelo mesmo segredo do webhook do Granola. */

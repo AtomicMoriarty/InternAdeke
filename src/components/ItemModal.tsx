@@ -78,6 +78,7 @@ import {
 } from "@/lib/registros";
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
+import { CAMPO_RECORRENCIA, FREQUENCIAS, ROTULO_FREQUENCIA, frequenciaDo } from "@/lib/recorrencia";
 import {
   enviarAnexo,
   linkTemporario,
@@ -1128,6 +1129,32 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Repetição: ao finalizar, o próximo card nasce na manhã
+                  seguinte com o prazo empurrado um período (lib/recorrencia.ts). */}
+              <div>
+                <Label>Repetir</Label>
+                <select
+                  value={frequenciaDo(item) ?? ""}
+                  onChange={(e) => patchItem({ [CAMPO_RECORRENCIA]: e.target.value || undefined })}
+                  title="Ao finalizar este card, o próximo é criado na manhã seguinte, com o prazo seguinte"
+                  style={{ ...fieldStyle, width: 150 }}
+                >
+                  <option value="">Não repete</option>
+                  {FREQUENCIAS.map((f) => (
+                    <option key={f} value={f}>
+                      {ROTULO_FREQUENCIA[f]}
+                    </option>
+                  ))}
+                </select>
+                {frequenciaDo(item) && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#64748B", maxWidth: 150 }}>
+                    {item.recorrenciaProxima
+                      ? "Próximo card já criado"
+                      : "Ao finalizar, o próximo nasce na manhã seguinte"}
+                  </div>
+                )}
               </div>
 
               {/* Acompanhamento semanal: opt-in por card, para o registro
