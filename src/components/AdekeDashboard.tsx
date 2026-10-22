@@ -47,6 +47,7 @@ import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
 import Gantt from "@/components/Gantt";
+import Calendario from "@/components/Calendario";
 import TemplatesModal from "@/components/TemplatesModal";
 import {
   ensureTemplates,
@@ -5990,6 +5991,27 @@ export default function App() {
                 >
                   <CalendarRange size={14} /> Linha do tempo
                 </button>
+                <button
+                  onClick={() => setDashTab("calendario")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "9px 16px",
+                    border: "none",
+                    borderBottom:
+                      dashTab === "calendario" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    background: "transparent",
+                    color: dashTab === "calendario" ? "#0DD3C5" : "#64748B",
+                    fontSize: 13,
+                    fontWeight: dashTab === "calendario" ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <CalendarRange size={14} /> Calendário
+                </button>
               </div>
               {dashTab === "painel" && (
                 <div style={{ padding: "40px 44px" }}>
@@ -6010,6 +6032,7 @@ export default function App() {
               )}
               {dashTab === "relatorios" && <Relatorios />}
               {dashTab === "gantt" && <Gantt />}
+              {dashTab === "calendario" && <Calendario allowedModules={allowedModules} />}
             </div>
           )}
           {view.page !== "dashboard" && (
