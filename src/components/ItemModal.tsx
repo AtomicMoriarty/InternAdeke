@@ -305,6 +305,14 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     typeof document !== "undefined" ? document.activeElement : null,
   );
 
+  // O onClose chega como função nova a cada render de quem abriu o card. Com
+  // ele nas dependências, o efeito abaixo rodava a cada tecla: devolvia o
+  // foco a quem abriu o card e focava a janela, e o campo em que a pessoa
+  // escrevia perdia o foco depois de cada letra. A ref guarda o onClose atual
+  // e o efeito roda uma vez só, ao abrir.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Auto-focus modal and handle ESC + focus trap
   useEffect(() => {
     const openerEl = openerRef.current;
@@ -316,7 +324,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -354,7 +362,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
         (openerEl as HTMLElement).focus();
       }
     };
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
