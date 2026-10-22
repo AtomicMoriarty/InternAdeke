@@ -31,6 +31,7 @@ import {
   ArrowUp,
   ArrowDown,
   CalendarRange,
+  Timer,
   MessageSquare,
   LayoutDashboard,
   Stamp,
@@ -48,6 +49,7 @@ import MentionTextarea, { MentionText } from "@/components/MentionTextarea";
 import Relatorios from "@/components/Relatorios";
 import Gantt from "@/components/Gantt";
 import Calendario from "@/components/Calendario";
+import Horas from "@/components/Horas";
 import TemplatesModal from "@/components/TemplatesModal";
 import {
   ensureTemplates,
@@ -6012,6 +6014,27 @@ export default function App() {
                 >
                   <CalendarRange size={14} /> Calendário
                 </button>
+                <button
+                  onClick={() => setDashTab("horas")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "9px 16px",
+                    border: "none",
+                    borderBottom:
+                      dashTab === "horas" ? "2px solid #0DD3C5" : "2px solid transparent",
+                    background: "transparent",
+                    color: dashTab === "horas" ? "#0DD3C5" : "#64748B",
+                    fontSize: 13,
+                    fontWeight: dashTab === "horas" ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <Timer size={14} /> Horas
+                </button>
               </div>
               {dashTab === "painel" && (
                 <div style={{ padding: "40px 44px" }}>
@@ -6033,6 +6056,7 @@ export default function App() {
               {dashTab === "relatorios" && <Relatorios />}
               {dashTab === "gantt" && <Gantt />}
               {dashTab === "calendario" && <Calendario allowedModules={allowedModules} />}
+              {dashTab === "horas" && <Horas allowedModules={allowedModules} />}
             </div>
           )}
           {view.page !== "dashboard" && (

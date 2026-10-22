@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Eye,
   Link2,
+  Play,
 } from "lucide-react";
 import { useDashboardState } from "@/lib/useDashboardState";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -77,6 +78,9 @@ import {
 import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from "@/lib/comandos";
 import { COLUMN_COLORS } from "@/lib/flattenItems";
 import { CAMPO_RECORRENCIA, FREQUENCIAS, ROTULO_FREQUENCIA, frequenciaDo } from "@/lib/recorrencia";
+import TempoDoCard from "@/components/TempoDoCard";
+import type { AlvoDoTempo } from "@/lib/tempo";
+import { iniciarCronometro } from "@/lib/apontamentos";
 import {
   enviarAnexo,
   linkTemporario,
@@ -400,6 +404,21 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
   const checkDone = checklist.filter((ck) => ck.done).length;
   const checkPct = checklist.length ? Math.round((checkDone / checklist.length) * 100) : 0;
   const avisoPrazoDias = String(item.avisoPrazoDias ?? 3);
+  // A folha de horas guarda onde o tempo foi gasto com os nomes de hoje: o
+  // relatório mostra o que era a demanda naquele dia, mesmo se mudar de nome.
+  const alvoDoTempo: AlvoDoTempo = {
+    area_id: areaId,
+    cliente_id: clienteId,
+    cliente_dir_id: ehProduto ? null : cliente?.clienteId || null,
+    cliente_nome: cliente?.name || "",
+    plano_id: ehProduto ? null : planoId,
+    plano_nome: ehProduto ? "" : plano?.name || "",
+    item_id: itemId,
+    item_nome: item.name || "",
+  };
+  const ehAdminTempo =
+    currentProfile?.role === "admin" ||
+    currentUser?.email?.toLowerCase() === "portoepacca@portoepacca.com";
   const seguidores: string[] = Array.isArray(item.seguidores) ? item.seguidores : [];
   const sigo = !!currentUser && seguidores.includes(currentUser.id);
   const acompanhando = temAcompanhamento(item);
@@ -1871,6 +1890,19 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
               </div>
             )}
 
+            {/* Folha de horas: cronômetro e lançamentos desta demanda. */}
+            <div style={{ marginBottom: 22 }}>
+              <TempoDoCard
+                alvo={alvoDoTempo}
+                subdemandas={checklist.map((ck: ItemChecklist) => ({ id: ck.id, text: ck.text }))}
+                userId={currentUser?.id || null}
+                ehAdmin={ehAdminTempo}
+                nomePessoa={(id: string) =>
+                  profiles.find((p) => p.id === id)?.display_name || "Alguém"
+                }
+              />
+            </div>
+
             {/* Checklist */}
             {(checklist.length > 0 || showCheckForm) && (
               <div style={{ marginBottom: 22 }}>
@@ -1958,6 +1990,27 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
                           textDecoration: ck.done ? "line-through" : "none",
                         }}
                       />
+                      {currentUser && !ck.done && (
+                        <button
+                          onClick={() =>
+                            void iniciarCronometro({
+                              ...alvoDoTempo,
+                              subitem_id: ck.id,
+                              subitem_nome: ck.text,
+                            })
+                          }
+                          title="Cronometrar esta subdemanda"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 2,
+                            lineHeight: 0,
+                          }}
+                        >
+                          <Play size={12} color="#0F766E" />
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteCheck(ck.id)}
                         style={{
