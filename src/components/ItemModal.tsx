@@ -716,7 +716,7 @@ export default function ItemModal({ areaId, clienteId, planoId, itemId, onClose 
     if (!arquivo) return;
     setErroAnexo("");
     setEnviandoAnexo(true);
-    const r = await enviarAnexo(arquivo, itemId, {
+    const r = await enviarAnexo(arquivo, areaId, itemId, {
       id: currentUser?.id || null,
       nome: currentProfile?.display_name || currentUser?.email || "sistema",
     });

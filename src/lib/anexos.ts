@@ -80,16 +80,26 @@ export function nomeSeguro(nome: string): string {
   return (limpo || "arquivo") + ext.replace(/[^a-zA-Z0-9.]/g, "");
 }
 
-/** Caminho do arquivo: agrupado por item, com sufixo único contra colisão. */
-export function montarCaminho(itemId: string, nomeArquivo: string): string {
+/**
+ * Caminho do arquivo: área/item/arquivo, com sufixo único contra colisão.
+ *
+ * A área vem primeiro porque é por ela que o banco decide quem lê o arquivo
+ * (migração 20261022000200_anexos_por_area): a mesma regra das áreas do
+ * quadro, para o contrato de um cliente de Societário não ficar ao alcance de
+ * quem só vê o Comercial.
+ */
+export function montarCaminho(areaId: string, itemId: string, nomeArquivo: string): string {
   const sufixo = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  return `${itemId}/${sufixo}-${nomeSeguro(nomeArquivo)}`;
+  const area = String(areaId || "").replace(/[^a-zA-Z0-9_-]/g, "") || "_comum";
+  const item = String(itemId || "").replace(/[^a-zA-Z0-9_-]/g, "") || "item";
+  return `${area}/${item}/${sufixo}-${nomeSeguro(nomeArquivo)}`;
 }
 
 export type ResultadoUpload = { ok: true; anexo: Anexo } | { ok: false; erro: string };
 
 export async function enviarAnexo(
   arquivo: File,
+  areaId: string,
   itemId: string,
   autor: { id: string | null; nome: string },
 ): Promise<ResultadoUpload> {
@@ -100,7 +110,7 @@ export async function enviarAnexo(
     };
   }
 
-  const caminho = montarCaminho(itemId, arquivo.name);
+  const caminho = montarCaminho(areaId, itemId, arquivo.name);
   const { error } = await supabase.storage.from(BUCKET).upload(caminho, arquivo, {
     cacheControl: "3600",
     upsert: false,
