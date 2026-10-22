@@ -112,6 +112,11 @@ type Props = {
   allowedModules?: string[];
 };
 
+/** Cards que cada coluna mostra antes do "Mostrar mais". */
+const LIMITE_ABERTA = 40;
+/** Finalizado e Suspenso são histórico: só os mais recentes de cara. */
+const LIMITE_FECHADA = 10;
+
 export default function QuadroGeral({ filters, setFilters, allowedModules }: Props) {
   const { data, loaded, update } = useDashboardState("quadro");
   const profiles = useProfiles();
@@ -132,6 +137,10 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
   }, [currentUser, filters, setFilters]);
   const [dragging, setDragging] = useState<FlatCard | null>(null);
   const [hoverCol, setHoverCol] = useState<string | null>(null);
+  // Quantos cards cada coluna mostra. Desenhar os ~500 de uma vez (340 deles
+  // finalizados) fazia o quadro inteiro redesenhar a cada edição de qualquer
+  // pessoa; o resto aparece no "Mostrar mais" de cada coluna.
+  const [limites, setLimites] = useState<Record<string, number>>({});
   /** Aviso de quando um arrasto foi recusado, para não parecer que travou. */
   const [recusa, setRecusa] = useState("");
   const [modalItem, setModalItem] = useState<{
@@ -403,7 +412,15 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
       >
         {visibleCols.map((etapa) => {
           const status = etapa.nome;
-          const list = cardsByStatus[status] || [];
+          const todos = cardsByStatus[status] || [];
+          // Encerrado é histórico: os mais recentes primeiro, e poucos de cara.
+          const fechada = etapa.equivale === "Finalizado" || etapa.equivale === "Suspenso";
+          const ordenados = fechada
+            ? [...todos].sort((a, b) => (a.diasNoStatus ?? 1e9) - (b.diasNoStatus ?? 1e9))
+            : todos;
+          const limite = limites[status] ?? (fechada ? LIMITE_FECHADA : LIMITE_ABERTA);
+          const list = ordenados.slice(0, limite);
+          const faltam = ordenados.length - list.length;
           const color = etapa.cor;
           const isHover = hoverCol === status;
           return (
@@ -446,7 +463,7 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
                   <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A" }}>{status}</span>
                 </div>
                 <span style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>
-                  {list.length}
+                  {todos.length}
                 </span>
               </div>
               <div
@@ -473,6 +490,26 @@ export default function QuadroGeral({ filters, setFilters, allowedModules }: Pro
                     selecionado={selecionados.has(card.itemId)}
                   />
                 ))}
+                {faltam > 0 && (
+                  <button
+                    onClick={() =>
+                      setLimites((l) => ({ ...l, [status]: limite + Math.max(LIMITE_ABERTA, 20) }))
+                    }
+                    style={{
+                      border: "1px dashed #CBD5E1",
+                      background: "#F8FAFC",
+                      color: "#475569",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Mostrar mais {Math.min(faltam, Math.max(LIMITE_ABERTA, 20))} de {faltam}
+                  </button>
+                )}
                 {list.length === 0 && (
                   <div
                     style={{

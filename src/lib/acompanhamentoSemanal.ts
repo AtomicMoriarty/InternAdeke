@@ -14,6 +14,7 @@
 import type { DashboardState, Item, Comentario } from "@/lib/dashboardTypes";
 import { globalDeQualquerArea } from "@/lib/etapas";
 import { dataDoPrazo } from "@/lib/prazos";
+import { uid, dataBR } from "@/lib/comum";
 
 /** Campo do item que liga o acompanhamento. */
 export const CAMPO_ACOMPANHAMENTO = "acompanhamentoSemanal";
@@ -46,14 +47,6 @@ function diasEntre(a: Date, b: Date): number {
   const y = new Date(b);
   y.setHours(0, 0, 0, 0);
   return Math.round((y.getTime() - x.getTime()) / DIA_MS);
-}
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function dataBR(d: Date) {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 /** Segunda-feira da semana de `d`, usada como chave para não repetir o post. */

@@ -13,6 +13,7 @@
 import type { DashboardState, Area, Cliente, Plano, Item } from "@/lib/dashboardTypes";
 import type { Profile } from "@/lib/profiles";
 import { AREA_COMERCIAL, CAMPO_ORIGEM_REUNIAO, CLIENTE_INTERNO_ID } from "@/lib/comercial";
+import { dataBR, semAcento } from "@/lib/comum";
 
 export const TIPOS_REUNIAO = [
   { id: "cliente", nome: "Com cliente", cor: "#0DD3C5" },
@@ -57,10 +58,6 @@ export const NOME_CLIENTE_INTERNO = "Reuniões internas";
 
 function idCurto(prefixo: string) {
   return `${prefixo}${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function dataBR(d: Date) {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 export function reuniaoVazia(autor?: Profile | null, agora: Date = new Date()): Reuniao {
@@ -122,14 +119,6 @@ export function removerReuniao(data: DashboardState, reuniaoId: string): Dashboa
 }
 
 // ─── Extração de tarefas ─────────────────────────────────────────────────────
-
-function semAcento(s: string) {
-  return String(s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .trim();
-}
 
 /** Palavras que denunciam um encaminhamento no meio de um texto corrido. */
 const VERBOS_DE_ACAO = [

@@ -15,6 +15,7 @@
 
 import type { DashboardState, Area, Cliente, Plano } from "@/lib/dashboardTypes";
 import { AREAS, areaById } from "@/lib/areas";
+import { semAcento } from "@/lib/comum";
 
 export type ClienteDiretorio = {
   id: string;
@@ -56,15 +57,6 @@ export const CAMPO_DISTINTOS = "clientesDistintos";
 
 function idCurto(prefixo: string) {
   return `${prefixo}${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function semAcento(s: string) {
-  return String(s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 // ─── Leitura ─────────────────────────────────────────────────────────────────

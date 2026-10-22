@@ -23,7 +23,25 @@ type ErroPostgrest = { code?: string; message: string } | null;
 type ClienteSupabase = SupabaseClient<any, any, any>;
 
 export type ResultadoGravacao =
-  { ok: true; jeito: "areas" | "operacoes" | "inteiro" | "nada" } | { ok: false; erro: string };
+  | { ok: true; jeito: "areas" | "operacoes" | "inteiro" | "nada" }
+  | { ok: false; erro: string; permanente: boolean };
+
+/**
+ * O banco recusou de vez: sem permissão, dado inválido, operação malformada.
+ *
+ * Tentar de novo não muda a resposta. Antes, esse lote voltava para a fila e
+ * grudava em todos os seguintes, e nada do que a pessoa editasse dali em
+ * diante chegava ao banco. Rede caída, tempo esgotado e erro do servidor são
+ * passageiros e continuam sendo tentados.
+ */
+function recusaPermanente(e: ErroPostgrest) {
+  const c = e?.code || "";
+  return c === "42501" || c === "P0001" || /^2[23]/.test(c);
+}
+
+function falha(e: NonNullable<ErroPostgrest>): ResultadoGravacao {
+  return { ok: false, erro: e.message, permanente: recusaPermanente(e) };
+}
 
 /** A função não existe no banco: PostgREST e Postgres dizem isso de jeitos diferentes. */
 function faltaFuncao(e: ErroPostgrest) {
@@ -58,7 +76,7 @@ export async function gravarOperacoes(
 
   const porArea = await supabase.rpc("aplicar_operacoes_areas", { p_ops: ops, p_marca: marca });
   if (!porArea.error) return { ok: true, jeito: "areas" };
-  if (!faltaFuncao(porArea.error)) return { ok: false, erro: porArea.error.message };
+  if (!faltaFuncao(porArea.error)) return falha(porArea.error);
 
   const { error } = await supabase.rpc("aplicar_operacoes_dashboard", {
     p_ops: ops,
@@ -66,13 +84,13 @@ export async function gravarOperacoes(
     p_id: DASHBOARD_ROW_ID,
   });
   if (!error) return { ok: true, jeito: "operacoes" };
-  if (!faltaFuncao(error)) return { ok: false, erro: error.message };
+  if (!faltaFuncao(error)) return falha(error);
 
   const { error: erroInteiro } = await supabase
     .from("dashboard_state")
     .update({ data: inteiro(), updated_at: new Date().toISOString() })
     .eq("id", DASHBOARD_ROW_ID);
-  return erroInteiro ? { ok: false, erro: erroInteiro.message } : { ok: true, jeito: "inteiro" };
+  return erroInteiro ? falha(erroInteiro) : { ok: true, jeito: "inteiro" };
 }
 
 /** Para quem lê, muda e grava de uma vez — o worker: grava só a diferença. */

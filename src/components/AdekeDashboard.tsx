@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useMemo, lazy, Suspense } from "react";
 // O recharts e a maior biblioteca do projeto e so o grafico do Painel a usa.
 // Carregado sob demanda, ele sai do pacote que toda tela baixa.
-const GraficoStatus = lazy(() => import("@/components/GraficoStatus"));
+import GraficoStatus from "@/components/GraficoStatus";
 import {
   Shield,
   Lock,
@@ -46,11 +46,11 @@ import type { LucideIcon } from "lucide-react";
 import type { Item } from "@/lib/dashboardTypes";
 import ResponsaveisPicker from "@/components/ResponsaveisPicker";
 import MentionTextarea, { MentionText } from "@/components/MentionTextarea";
-import Relatorios from "@/components/Relatorios";
-import Gantt from "@/components/Gantt";
-import Calendario from "@/components/Calendario";
-import Horas from "@/components/Horas";
-import TemplatesModal from "@/components/TemplatesModal";
+const Relatorios = lazy(() => import("@/components/Relatorios"));
+const Gantt = lazy(() => import("@/components/Gantt"));
+const Calendario = lazy(() => import("@/components/Calendario"));
+const Horas = lazy(() => import("@/components/Horas"));
+const TemplatesModal = lazy(() => import("@/components/TemplatesModal"));
 import {
   ensureTemplates,
   templatesDaArea,
@@ -67,14 +67,18 @@ import {
   MODULO_PRODUTOS,
 } from "@/lib/areas";
 import { useProfiles, initials, colorFor } from "@/lib/profiles";
-import FunilComercial from "@/components/FunilComercial";
-import ReunioesComerciais from "@/components/ReunioesComerciais";
-import AjudanteComercial from "@/components/AjudanteComercial";
+const FunilComercial = lazy(() => import("@/components/FunilComercial"));
+const ReunioesComerciais = lazy(() => import("@/components/ReunioesComerciais"));
+const AjudanteComercial = lazy(() => import("@/components/AjudanteComercial"));
 import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/comercial";
-import DiretorioClientes from "@/components/DiretorioClientes";
-import Triagem from "@/components/Triagem";
+const DiretorioClientes = lazy(() => import("@/components/DiretorioClientes"));
+const Triagem = lazy(() => import("@/components/Triagem"));
 import { renomearPlanoImportado } from "@/lib/importTrello";
-import { useDashboardState, criarDashboardStateSeVazio } from "@/lib/useDashboardState";
+import {
+  useDashboardState,
+  criarDashboardStateSeVazio,
+  modoDoEstado,
+} from "@/lib/useDashboardState";
 import {
   etapasDaArea,
   etapaDoItem,
@@ -96,6 +100,7 @@ import { interpretarTexto, diferencaDeTexto, temAlgoAFazer, tarefaDeTexto } from
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import QuadroGeral from "@/components/QuadroGeral";
 import ItemModal from "@/components/ItemModal";
+import { uid, hojeBR as todayBR } from "@/lib/comum";
 
 const AREA_ICONS = {
   shield: Shield,
@@ -109,6 +114,15 @@ const AREA_ICONS = {
 function moduloOf(areaId) {
   return moduloOfArea(areaId);
 }
+/** Enquanto uma tela secundária chega (lazy): ocupa o lugar sem pular a página. */
+function CarregandoTela() {
+  return (
+    <div style={{ padding: "40px 44px", color: "#94A3B8", fontSize: 13 }} aria-busy="true">
+      Carregando...
+    </div>
+  );
+}
+
 function ResponsaveisAvatars({ ids }) {
   const profiles = useProfiles();
   const sel = (ids || []).map((id) => profiles.find((p) => p.id === id)).filter(Boolean);
@@ -211,10 +225,6 @@ const TIPOS_ITEM = [
   "Documento",
   "Outro",
 ];
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 const RISK_QUESTIONS = [
   {
@@ -972,12 +982,6 @@ function reorderById(arr, sourceId, targetId) {
   next.splice(to, 0, moved);
   return next;
 }
-function todayBR() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
 // ─── Primitives ───────────────────────────────────────────────────────────────
 function Ring({ pct, color, size = 80, stroke = 8 }) {
   const r = (size - stroke) / 2;
@@ -1443,9 +1447,7 @@ function Dashboard({ data, setData, nav, allowedModules = ALL_MODULES }) {
           >
             Distribuição por status
           </p>
-          <Suspense fallback={<div style={{ height: 170 }} aria-label="Carregando o gráfico" />}>
-            <GraficoStatus dados={chartData} />
-          </Suspense>
+          <GraficoStatus dados={chartData} />
         </div>
 
         <div
@@ -5699,8 +5701,12 @@ export default function App() {
       return;
     }
     reconciliouRef.current = true;
+    // Com uma linha por área, a área que falta é a que a pessoa não pode ver:
+    // recriá-la daqui seria gravar onde o banco não deixa. As linhas das áreas
+    // novas nascem no worker (garantirLinhasDeArea, server.ts).
+    const completarAreas = modoDoEstado() === "areas" ? (d) => d : ensureAreas;
     atualizarLoja((prev) =>
-      renomearPlanoImportado(migrarParaDiretorio(ensureTemplates(ensureAreas(prev)))),
+      renomearPlanoImportado(migrarParaDiretorio(ensureTemplates(completarAreas(prev)))),
     );
   }, [loaded, dataLoja, atualizarLoja]);
 
@@ -5894,237 +5900,241 @@ export default function App() {
 
         {/* Main content */}
         <main style={{ marginLeft: 220, flex: 1, minHeight: "100vh", overflowX: "hidden" }}>
-          {view.page === "dashboard" && (
-            <div>
-              {/* Tab bar */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: 4,
-                  padding: "16px 44px 0",
-                  borderBottom: "1px solid #E2E8F0",
-                  background: "#F0F5FF",
-                  position: "sticky",
-                  top: 0,
-                  zIndex: 50,
-                }}
-              >
-                <button
-                  onClick={() => setDashTab("painel")}
+          {/* As telas secundárias chegam sob demanda (lazy, no topo): abrir o
+              sistema não baixa mais Relatórios, Gantt, Funil, Reuniões etc. */}
+          <Suspense fallback={<CarregandoTela />}>
+            {view.page === "dashboard" && (
+              <div>
+                {/* Tab bar */}
+                <div
                   style={{
                     display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "painel" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "painel" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "painel" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
+                    gap: 4,
+                    padding: "16px 44px 0",
+                    borderBottom: "1px solid #E2E8F0",
+                    background: "#F0F5FF",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 50,
                   }}
                 >
-                  <Home size={14} /> Painel
-                </button>
-                <button
-                  onClick={() => setDashTab("quadro")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "quadro" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "quadro" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "quadro" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <LayoutDashboard size={14} /> Quadro Geral
-                </button>
-                <button
-                  onClick={() => setDashTab("relatorios")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "relatorios" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "relatorios" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "relatorios" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <BarChart3 size={14} /> Relatórios
-                </button>
-                <button
-                  onClick={() => setDashTab("gantt")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "gantt" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "gantt" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "gantt" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <CalendarRange size={14} /> Linha do tempo
-                </button>
-                <button
-                  onClick={() => setDashTab("calendario")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "calendario" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "calendario" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "calendario" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <CalendarRange size={14} /> Calendário
-                </button>
-                <button
-                  onClick={() => setDashTab("horas")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "9px 16px",
-                    border: "none",
-                    borderBottom:
-                      dashTab === "horas" ? "2px solid #0DD3C5" : "2px solid transparent",
-                    background: "transparent",
-                    color: dashTab === "horas" ? "#0DD3C5" : "#64748B",
-                    fontSize: 13,
-                    fontWeight: dashTab === "horas" ? 700 : 500,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <Timer size={14} /> Horas
-                </button>
+                  <button
+                    onClick={() => setDashTab("painel")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "painel" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "painel" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "painel" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <Home size={14} /> Painel
+                  </button>
+                  <button
+                    onClick={() => setDashTab("quadro")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "quadro" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "quadro" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "quadro" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <LayoutDashboard size={14} /> Quadro Geral
+                  </button>
+                  <button
+                    onClick={() => setDashTab("relatorios")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "relatorios" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "relatorios" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "relatorios" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <BarChart3 size={14} /> Relatórios
+                  </button>
+                  <button
+                    onClick={() => setDashTab("gantt")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "gantt" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "gantt" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "gantt" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <CalendarRange size={14} /> Linha do tempo
+                  </button>
+                  <button
+                    onClick={() => setDashTab("calendario")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "calendario" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "calendario" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "calendario" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <CalendarRange size={14} /> Calendário
+                  </button>
+                  <button
+                    onClick={() => setDashTab("horas")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "9px 16px",
+                      border: "none",
+                      borderBottom:
+                        dashTab === "horas" ? "2px solid #0DD3C5" : "2px solid transparent",
+                      background: "transparent",
+                      color: dashTab === "horas" ? "#0DD3C5" : "#64748B",
+                      fontSize: 13,
+                      fontWeight: dashTab === "horas" ? 700 : 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <Timer size={14} /> Horas
+                  </button>
+                </div>
+                {dashTab === "painel" && (
+                  <div style={{ padding: "40px 44px" }}>
+                    <Dashboard
+                      data={data}
+                      setData={setData}
+                      nav={setView}
+                      allowedModules={allowedModules}
+                    />
+                  </div>
+                )}
+                {dashTab === "quadro" && (
+                  <QuadroGeral
+                    filters={quadroFilters}
+                    setFilters={(next) => setQuadroFilters((prev) => ({ ...prev, ...next }))}
+                    allowedModules={allowedModules}
+                  />
+                )}
+                {dashTab === "relatorios" && <Relatorios />}
+                {dashTab === "gantt" && <Gantt />}
+                {dashTab === "calendario" && <Calendario allowedModules={allowedModules} />}
+                {dashTab === "horas" && <Horas allowedModules={allowedModules} />}
               </div>
-              {dashTab === "painel" && (
-                <div style={{ padding: "40px 44px" }}>
-                  <Dashboard
+            )}
+            {view.page !== "dashboard" && (
+              <div style={{ padding: "40px 44px" }}>
+                {view.page === "area" && allowedModules.includes(view.areaId) && (
+                  <AreaView areaId={view.areaId} data={data} setData={setData} nav={setView} />
+                )}
+                {view.page === "cliente" && allowedModules.includes(view.areaId) && (
+                  <ClienteView
+                    areaId={view.areaId}
+                    clienteId={view.clienteId}
                     data={data}
                     setData={setData}
                     nav={setView}
-                    allowedModules={allowedModules}
                   />
-                </div>
-              )}
-              {dashTab === "quadro" && (
-                <QuadroGeral
-                  filters={quadroFilters}
-                  setFilters={(next) => setQuadroFilters((prev) => ({ ...prev, ...next }))}
-                  allowedModules={allowedModules}
-                />
-              )}
-              {dashTab === "relatorios" && <Relatorios />}
-              {dashTab === "gantt" && <Gantt />}
-              {dashTab === "calendario" && <Calendario allowedModules={allowedModules} />}
-              {dashTab === "horas" && <Horas allowedModules={allowedModules} />}
-            </div>
-          )}
-          {view.page !== "dashboard" && (
-            <div style={{ padding: "40px 44px" }}>
-              {view.page === "area" && allowedModules.includes(view.areaId) && (
-                <AreaView areaId={view.areaId} data={data} setData={setData} nav={setView} />
-              )}
-              {view.page === "cliente" && allowedModules.includes(view.areaId) && (
-                <ClienteView
-                  areaId={view.areaId}
-                  clienteId={view.clienteId}
-                  data={data}
-                  setData={setData}
-                  nav={setView}
-                />
-              )}
-              {view.page === "plano" && allowedModules.includes(view.areaId) && (
-                <PlanoView
-                  areaId={view.areaId}
-                  clienteId={view.clienteId}
-                  planoId={view.planoId}
-                  data={data}
-                  setData={setData}
-                  nav={setView}
-                />
-              )}
-              {view.page === "produtos" && allowedModules.includes("produtos") && (
-                <ProdutosView data={data} setData={setData} nav={setView} />
-              )}
-              {view.page === "produto" && allowedModules.includes("produtos") && (
-                <ProdutoDetail prodId={view.prodId} data={data} setData={setData} nav={setView} />
-              )}
-              {view.page === "ajudante" && allowedModules.includes("comercial") && (
-                <AjudanteComercial />
-              )}
-              {view.page === "triagem" && (
-                <Triagem
-                  data={data}
-                  setData={setData}
-                  abrirCard={(card) =>
-                    setCardDaTriagem({
-                      areaId: card.areaId,
-                      clienteId: card.clienteId,
-                      planoId: card.planoId,
-                      itemId: card.itemId,
-                    })
-                  }
-                />
-              )}
-              {cardDaTriagem && (
-                <ItemModal
-                  areaId={cardDaTriagem.areaId}
-                  clienteId={cardDaTriagem.clienteId}
-                  planoId={cardDaTriagem.planoId}
-                  itemId={cardDaTriagem.itemId}
-                  onClose={() => setCardDaTriagem(null)}
-                />
-              )}
-              {view.page === "clientes" && (
-                <DiretorioClientes
-                  data={data}
-                  setData={setData}
-                  planosDaArea={buildTemplatePlanos}
-                  irParaArea={(areaId) => setView({ page: "area", areaId })}
-                />
-              )}
-            </div>
-          )}
+                )}
+                {view.page === "plano" && allowedModules.includes(view.areaId) && (
+                  <PlanoView
+                    areaId={view.areaId}
+                    clienteId={view.clienteId}
+                    planoId={view.planoId}
+                    data={data}
+                    setData={setData}
+                    nav={setView}
+                  />
+                )}
+                {view.page === "produtos" && allowedModules.includes("produtos") && (
+                  <ProdutosView data={data} setData={setData} nav={setView} />
+                )}
+                {view.page === "produto" && allowedModules.includes("produtos") && (
+                  <ProdutoDetail prodId={view.prodId} data={data} setData={setData} nav={setView} />
+                )}
+                {view.page === "ajudante" && allowedModules.includes("comercial") && (
+                  <AjudanteComercial />
+                )}
+                {view.page === "triagem" && (
+                  <Triagem
+                    data={data}
+                    setData={setData}
+                    abrirCard={(card) =>
+                      setCardDaTriagem({
+                        areaId: card.areaId,
+                        clienteId: card.clienteId,
+                        planoId: card.planoId,
+                        itemId: card.itemId,
+                      })
+                    }
+                  />
+                )}
+                {cardDaTriagem && (
+                  <ItemModal
+                    areaId={cardDaTriagem.areaId}
+                    clienteId={cardDaTriagem.clienteId}
+                    planoId={cardDaTriagem.planoId}
+                    itemId={cardDaTriagem.itemId}
+                    onClose={() => setCardDaTriagem(null)}
+                  />
+                )}
+                {view.page === "clientes" && (
+                  <DiretorioClientes
+                    data={data}
+                    setData={setData}
+                    planosDaArea={buildTemplatePlanos}
+                    irParaArea={(areaId) => setView({ page: "area", areaId })}
+                  />
+                )}
+              </div>
+            )}
+          </Suspense>
         </main>
       </div>
     </>

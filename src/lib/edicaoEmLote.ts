@@ -8,14 +8,11 @@
 import type { FlatCard } from "@/lib/flattenItems";
 import { equivalenteGlobal, statusLegado } from "@/lib/etapas";
 import type { DashboardState, Item } from "@/lib/dashboardTypes";
+import { uid } from "@/lib/comum";
 
 export const PRODUTOS_AREA_ID = "produtos";
 
 const DIA_MS = 86400000;
-
-function uid() {
-  return `_${Math.random().toString(36).slice(2, 9)}`;
-}
 
 export type AcaoEmLote =
   // O status pode ser uma das sete colunas ou uma etapa da área, como

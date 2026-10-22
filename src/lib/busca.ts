@@ -8,6 +8,7 @@ import { AREAS, areaById } from "@/lib/areas";
 import { corDoEstado, globalDeQualquerArea } from "@/lib/etapas";
 import { cardPassa, lerFiltros, temFiltro, type PessoaBusca } from "@/lib/filtrosBusca";
 import { diaNoEscritorio } from "@/lib/prazos";
+import { semAcento } from "@/lib/comum";
 
 /** Para onde ir quando alguém escolhe um resultado. */
 export type Destino =
@@ -27,14 +28,6 @@ type Resultado = {
   /** Card de processo já encerrado, mostrado mais abaixo e marcado. */
   encerrado?: boolean;
 };
-
-function semAcento(s: string) {
-  return String(s || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
-}
 
 /**
  * Procura em card, cliente e tela ao mesmo tempo.
