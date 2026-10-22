@@ -5,10 +5,11 @@
 // Compliance, INPI, Contratos e no resto. O que é de cada área — planos, cards,
 // prazos — continua na área.
 
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Plus, Search, Trash2, Building2, Check, X, UserPlus, Undo2, Upload } from "lucide-react";
-import ImportarTrello from "@/components/ImportarTrello";
+// Só quem vai importar baixa o importador do Trello (e o leitor do JSON dele).
+const ImportarTrello = lazy(() => import("@/components/ImportarTrello"));
 import {
   clientesAtivos,
   diretorio,
@@ -136,7 +137,9 @@ export default function DiretorioClientes({ data, setData, planosDaArea, irParaA
       </div>
 
       {importando && (
-        <ImportarTrello data={data} setData={setData} onFechar={() => setImportando(false)} />
+        <Suspense fallback={null}>
+          <ImportarTrello data={data} setData={setData} onFechar={() => setImportando(false)} />
+        </Suspense>
       )}
 
       {erro && (
