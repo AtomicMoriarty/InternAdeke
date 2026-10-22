@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import BuscaGlobal, { type Destino } from "@/components/BuscaGlobal";
 import CronometroAtivo from "@/components/CronometroAtivo";
+import AvisoGravacao from "@/components/AvisoGravacao";
 import { useProfiles } from "@/lib/profiles";
 import { moduloOf } from "@/lib/areas";
 
@@ -194,6 +195,7 @@ function RootComponent() {
           }}
         />
       )}
+      {session && <AvisoGravacao />}
       {session && (
         <CronometroAtivo
           userId={session.user.id}

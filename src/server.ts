@@ -4,10 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { aplicarAcompanhamentoSemanal } from "./lib/acompanhamentoSemanal";
-import { gravarDiferenca, lerEstadoCompleto } from "./lib/gravarDashboard";
+import {
+  gravarDiferenca,
+  gravarOperacoes,
+  lerEstadoCompleto,
+  novaMarca,
+} from "./lib/gravarDashboard";
 import { avisosDePrazo, chaveAviso, diaNoEscritorio } from "./lib/prazos";
 import { gerarRecorrencias } from "./lib/recorrencia";
-import { moduloOf } from "./lib/areas";
+import { AREAS, moduloOf } from "./lib/areas";
 import type { Area, Cliente, Plano, Item } from "./lib/dashboardTypes";
 
 /** Segredos e bindings que o worker espera encontrar no ambiente. */
@@ -528,6 +533,34 @@ async function rodarAvisosDePrazo(env: WorkerEnv) {
   if (!lido.ok) return { ok: false, erro: lido.erro };
 
   const agora = new Date();
+
+  // Área nova no código (areas.ts) ainda sem linha no banco: nasce aqui, com a
+  // chave de serviço. O navegador não cria mais áreas: para quem só vê parte
+  // delas, a que falta é a que não pode ver.
+  if (lido.linhas) {
+    const existentes = new Set(lido.linhas.map((l) => l.id));
+    const novas = AREAS.filter((a) => !existentes.has(a.id));
+    if (novas.length) {
+      const criadas = await gravarOperacoes(
+        supabase,
+        novas.map((a) => ({
+          op: "set" as const,
+          caminho: ["areas", { id: a.id }],
+          valor: {
+            id: a.id,
+            name: a.name,
+            color: a.color,
+            responsavel: "",
+            responsaveis: [],
+            clientes: [],
+          },
+        })),
+        novaMarca(),
+        () => lido.data,
+      );
+      if (!criadas.ok) return { ok: false, erro: `áreas novas: ${criadas.erro}` };
+    }
+  }
 
   const repetidos = gerarRecorrencias(lido.data, agora);
   if (repetidos.criados) {

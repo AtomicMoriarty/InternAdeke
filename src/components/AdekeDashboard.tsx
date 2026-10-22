@@ -74,7 +74,11 @@ import { ehAreaComercial, contatosDoCliente, CLIENTE_INTERNO_ID } from "@/lib/co
 import DiretorioClientes from "@/components/DiretorioClientes";
 import Triagem from "@/components/Triagem";
 import { renomearPlanoImportado } from "@/lib/importTrello";
-import { useDashboardState, criarDashboardStateSeVazio } from "@/lib/useDashboardState";
+import {
+  useDashboardState,
+  criarDashboardStateSeVazio,
+  modoDoEstado,
+} from "@/lib/useDashboardState";
 import {
   etapasDaArea,
   etapaDoItem,
@@ -5699,8 +5703,12 @@ export default function App() {
       return;
     }
     reconciliouRef.current = true;
+    // Com uma linha por área, a área que falta é a que a pessoa não pode ver:
+    // recriá-la daqui seria gravar onde o banco não deixa. As linhas das áreas
+    // novas nascem no worker (garantirLinhasDeArea, server.ts).
+    const completarAreas = modoDoEstado() === "areas" ? (d) => d : ensureAreas;
     atualizarLoja((prev) =>
-      renomearPlanoImportado(migrarParaDiretorio(ensureTemplates(ensureAreas(prev)))),
+      renomearPlanoImportado(migrarParaDiretorio(ensureTemplates(completarAreas(prev)))),
     );
   }, [loaded, dataLoja, atualizarLoja]);
 

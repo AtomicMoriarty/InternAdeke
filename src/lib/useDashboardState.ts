@@ -164,6 +164,9 @@ function receberLinhas(linhas: LinhaArea[], permitirIgual = true) {
 async function carregar() {
   if (loja.carregando) return loja.carregando;
   loja.carregando = (async () => {
+    // O canal abre antes da leitura, para nada gravado durante ela se perder.
+    // Banco sem a tabela (antes da migração): o canal só falha, sem efeito.
+    if (loja.modo !== "legado") assinarAreas();
     // Os valores vêm junto, antes de a tela aparecer: editar um valor antes
     // de saber se a tabela existe o mandaria para o lugar errado.
     const [porArea] = await Promise.all([
@@ -219,6 +222,7 @@ async function carregar() {
  */
 function assinarAreas() {
   if (loja.canalAreas) return;
+  let conectouAntes = false;
   loja.canalAreas = supabase
     .channel("area_state")
     .on(
@@ -229,9 +233,13 @@ function assinarAreas() {
       },
     )
     .subscribe((status: string) => {
-      // Também na primeira vez: a carga veio antes de o canal estar de pé, e
-      // o que alguém gravou nesse meio-tempo não viria por ele.
-      if (status === "SUBSCRIBED") void recarregarDashboardState();
+      // Só na reconexão: o canal é aberto junto com a primeira carga, então o
+      // que mudar durante ela já chega por aqui. Antes isto buscava tudo de
+      // novo também na primeira conexão, e toda abertura do app baixava o
+      // escritório inteiro (~600KB) duas vezes.
+      if (status !== "SUBSCRIBED") return;
+      if (conectouAntes) void recarregarDashboardState();
+      conectouAntes = true;
     });
   if (typeof window !== "undefined") {
     // Fechar a aba no meio da espera de meio segundo perderia a última edição.
@@ -372,6 +380,18 @@ async function enviar() {
   });
   loja.enviando = false;
 
+  if (!r.ok && r.permanente) {
+    // Recusa definitiva (sem permissão, dado inválido): este lote sai da fila
+    // e a tela volta ao que o banco tem. Os lotes seguintes seguem normalmente.
+    console.error("[dashboard] gravação recusada, descartada:", r.erro);
+    loja.emVoo = loja.emVoo.filter((l) => l !== lote);
+    recalcular();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("adeke:gravacao-recusada", { detail: r.erro }));
+    }
+    if (loja.pendentes.length) agendarGravacao();
+    return;
+  }
   if (!r.ok) {
     // Volta para a fila e tenta de novo, esperando mais a cada falha seguida.
     // A tela continua mostrando a edição: ela não se perde por cair a rede.
@@ -481,4 +501,12 @@ export function recarregarDashboardState() {
   loja.carimboServidor = 0;
   loja.carimbosPorLinha.clear();
   return carregar();
+}
+
+/**
+ * De onde o estado veio: "areas" (uma linha por área, com permissão) ou
+ * "legado" (o JSON único de antes). null enquanto carrega.
+ */
+export function modoDoEstado() {
+  return loja.modo;
 }
