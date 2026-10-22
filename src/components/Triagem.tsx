@@ -1,26 +1,38 @@
-// A passada de triagem: dar dono e prazo ao que ainda não tem.
+// A triagem: dar dono e prazo ao que ainda não tem.
 //
-// Depois da importação o sistema ficou com centenas de cards que ninguém
-// precisa criar de novo — mas que ele também não consegue cobrar. Card sem
-// responsável não aparece no "Eu" de ninguém; card sem prazo não entra em
-// alerta, em relatório de atraso nem na linha do tempo. Estão à vista no
+// Card sem responsável não aparece no "Eu" de ninguém; card sem prazo não
+// entra em alerta, em relatório de atraso nem no calendário. Estão à vista no
 // quadro e invisíveis para o sistema ao mesmo tempo.
 //
-// Esta tela junta só o que precisa de uma decisão, marca vários de uma vez e
-// resolve em lote. Quando não há nada pendente ela diz isso e sai da frente.
+// A tela antiga era uma lista de cem demandas com abas, gráfico de carga e
+// barra de seleção ao mesmo tempo. Aqui ela é agrupada — por cliente ou por
+// responsável —, porque a decisão quase sempre é do grupo: "tudo da Acme fica
+// com a Ana", "o que o Bruno tem precisa de prazo". Cada grupo resolve tudo de
+// uma vez no cabeçalho, e aberto mostra as demandas com o campo que falta em
+// cada uma, sem caixa de seleção.
 
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { ListChecks, UserPlus, CalendarClock, Check, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, ListChecks, Check, Search } from "lucide-react";
 import type { DashboardState } from "@/lib/dashboardTypes";
 import type { FlatCard } from "@/lib/flattenItems";
 import { aplicarEmLote } from "@/lib/edicaoEmLote";
 import { pendencias, cargaPorPessoa } from "@/lib/triagem";
+import {
+  isoParaBR,
+  passaNoFiltro,
+  porCliente,
+  porResponsavel,
+  problemasDo,
+  SEM_RESPONSAVEL,
+  type Filtro,
+  type Grupo,
+} from "@/lib/triagemGrupos";
+import { semAcento } from "@/lib/comum";
 import { useProfiles, initials, colorFor, type Profile } from "@/lib/profiles";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { contaDoEscritorio } from "@/lib/importTrello";
-import { areaById, MODULO_COLOR, moduloOf } from "@/lib/areas";
-import { corDoEstado } from "@/lib/etapas";
+import { areaById } from "@/lib/areas";
 
 type Props = {
   data: DashboardState;
@@ -28,228 +40,166 @@ type Props = {
   abrirCard: (card: FlatCard) => void;
 };
 
-type Aba = "semDono" | "noEscritorio" | "semPrazo";
+type Agrupar = "cliente" | "responsavel";
 
 export default function Triagem({ data, setData, abrirCard }: Props) {
   const profiles = useProfiles();
-  const currentUser = useCurrentUser();
-  const [aba, setAba] = useState<Aba>("semDono");
-  const [marcados, setMarcados] = useState<Set<string>>(new Set());
-  const [prazo, setPrazo] = useState("");
+  const eu = useCurrentUser();
+  const [agrupar, setAgrupar] = useState<Agrupar>("cliente");
+  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [busca, setBusca] = useState("");
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [feito, setFeito] = useState("");
 
   const escritorio = useMemo(() => contaDoEscritorio(profiles) || "", [profiles]);
   const p = useMemo(() => pendencias(data, escritorio), [data, escritorio]);
   const carga = useMemo(() => cargaPorPessoa(data), [data]);
+  const nomeDe = (id: string) => profiles.find((x) => x.id === id)?.display_name || "(quem saiu)";
+  const pessoas = profiles.filter((x) => x.id !== escritorio);
 
-  const listas: Record<Aba, FlatCard[]> = {
-    semDono: p.semDono,
-    noEscritorio: p.noEscritorio,
-    semPrazo: p.semPrazo,
+  const pendentes = useMemo(
+    () => p.ativos.filter((c) => passaNoFiltro(c, "todos", escritorio)),
+    [p.ativos, escritorio],
+  );
+  const semDono = pendentes.filter((c) => problemasDo(c, escritorio).semDono).length;
+  const semPrazo = pendentes.filter((c) => problemasDo(c, escritorio).semPrazo).length;
+
+  const grupos = useMemo(() => {
+    const lista = pendentes.filter((c) => passaNoFiltro(c, filtro, escritorio));
+    const todos =
+      agrupar === "cliente"
+        ? porCliente(lista, escritorio)
+        : porResponsavel(lista, nomeDe, escritorio);
+    const termo = semAcento(busca);
+    if (!termo) return todos;
+    return todos.filter(
+      (g) =>
+        semAcento(g.nome).includes(termo) ||
+        g.cards.some((c) => semAcento(c.itemNome).includes(termo)),
+    );
+  }, [pendentes, filtro, agrupar, busca, escritorio, profiles]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function aplicar(cards: FlatCard[], acao: Parameters<typeof aplicarEmLote>[2], resumo: string) {
+    if (!cards.length) return;
+    setData((d) => aplicarEmLote(d, cards, acao).data);
+    setFeito(`${cards.length} ${cards.length === 1 ? "demanda" : "demandas"} ${resumo}`);
+  }
+  const atribuir = (cards: FlatCard[], id: string) =>
+    aplicar(cards, { tipo: "responsaveis", ids: [id], modo: "substituir" }, `com ${nomeDe(id)}`);
+  const darPrazo = (cards: FlatCard[], iso: string) => {
+    const br = isoParaBR(iso);
+    if (br) aplicar(cards, { tipo: "prazo", prazo: br }, `com prazo para ${br}`);
   };
-  const lista = listas[aba];
-  const selecionados = lista.filter((c) => marcados.has(c.itemId));
 
-  function trocarAba(nova: Aba) {
-    setAba(nova);
-    setMarcados(new Set());
-    setFeito("");
+  function alternar(chave: string) {
+    setAbertos((s) => {
+      const n = new Set(s);
+      if (n.has(chave)) n.delete(chave);
+      else n.add(chave);
+      return n;
+    });
   }
 
-  function alternar(id: string) {
-    const novo = new Set(marcados);
-    if (novo.has(id)) novo.delete(id);
-    else novo.add(id);
-    setMarcados(novo);
-  }
-
-  function aplicar(acao: Parameters<typeof aplicarEmLote>[2], resumo: string) {
-    if (!selecionados.length) return;
-    const quantos = selecionados.length;
-    setData((d) => aplicarEmLote(d, selecionados, acao).data);
-    setMarcados(new Set());
-    setFeito(`${quantos} ${quantos === 1 ? "card" : "cards"} ${resumo}`);
-  }
-
-  const nada = !p.semDono.length && !p.noEscritorio.length && !p.semPrazo.length;
+  const opcoesPessoas = (
+    <>
+      {pessoas.map((x) => {
+        const c = carga.find((y) => y.id === x.id);
+        return (
+          <option key={x.id} value={x.id}>
+            {x.display_name} ({c ? c.ativos : 0} ativas)
+          </option>
+        );
+      })}
+    </>
+  );
 
   return (
-    <div style={{ fontFamily: "Outfit, sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <div style={{ background: "#F59E0B18", borderRadius: 10, padding: 10 }}>
-          <ListChecks size={20} color="#F59E0B" />
-        </div>
-        <div>
-          <h2 style={{ color: "#0F172A", fontSize: 20, fontWeight: 900 }}>Triagem</h2>
-          <p style={{ color: "#64748B", fontSize: 12 }}>
-            O que está no sistema mas ainda não é trabalho de ninguém.
-          </p>
-        </div>
+    <div style={{ fontFamily: "Outfit, sans-serif", maxWidth: 1000 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <ListChecks size={20} color="#B45309" />
+        <h2 style={{ color: "#0F172A", fontSize: 20, fontWeight: 800, margin: 0 }}>Triagem</h2>
       </div>
+      <p style={{ color: "#64748B", fontSize: 13, margin: "4px 0 16px" }}>
+        {pendentes.length
+          ? `${pendentes.length} das ${p.ativos.length} demandas ativas não têm responsável ou prazo. Os ${p.suspensos.length} suspensos ficam de fora.`
+          : `Tudo certo: as ${p.ativos.length} demandas ativas têm responsável e prazo.`}
+      </p>
 
-      {nada ? (
-        <div style={{ ...aviso, background: "#F0FDF4", borderColor: "#BBF7D0", color: "#166534" }}>
-          <strong>Nada pendente.</strong> Todo card ativo tem responsável e prazo. Os{" "}
-          {p.suspensos.length} suspensos ficam de fora de propósito: estão parados por decisão, não
-          por esquecimento.
-        </div>
-      ) : (
+      {pendentes.length > 0 && (
         <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "16px 0 6px" }}>
-            <Guia
-              ligada={aba === "semDono"}
-              onClick={() => trocarAba("semDono")}
-              n={p.semDono.length}
-              rotulo="Sem responsável"
-              ajuda="Não aparecem no Eu de ninguém"
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Segmento
+              opcoes={[
+                ["cliente", "Por cliente"],
+                ["responsavel", "Por responsável"],
+              ]}
+              valor={agrupar}
+              onChange={(v) => {
+                setAgrupar(v as Agrupar);
+                setAbertos(new Set());
+              }}
             />
-            {p.noEscritorio.length > 0 && (
-              <Guia
-                ligada={aba === "noEscritorio"}
-                onClick={() => trocarAba("noEscritorio")}
-                n={p.noEscritorio.length}
-                rotulo="Na conta do escritório"
-                ajuda="Ficaram com quem saiu; precisam de dono de verdade"
+            <Segmento
+              opcoes={[
+                ["todos", `Tudo (${pendentes.length})`],
+                ["semDono", `Sem responsável (${semDono})`],
+                ["semPrazo", `Sem prazo (${semPrazo})`],
+              ]}
+              valor={filtro}
+              onChange={(v) => setFiltro(v as Filtro)}
+            />
+            <span style={{ flex: 1 }} />
+            <label style={{ ...campo, display: "flex", alignItems: "center", gap: 6, width: 230 }}>
+              <Search size={13} color="#94A3B8" />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder={agrupar === "cliente" ? "Buscar cliente" : "Buscar pessoa"}
+                style={{
+                  border: "none",
+                  outline: "none",
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  flex: 1,
+                }}
               />
-            )}
-            <Guia
-              ligada={aba === "semPrazo"}
-              onClick={() => trocarAba("semPrazo")}
-              n={p.semPrazo.length}
-              rotulo="Sem prazo"
-              ajuda="Não entram em alerta nem em relatório de atraso"
-            />
+            </label>
           </div>
-
-          <p style={{ fontSize: 11, color: "#64748B", marginBottom: 12 }}>
-            De {p.ativos.length} cards ativos. Os {p.suspensos.length} suspensos não entram aqui:
-            estão parados por decisão.
-          </p>
 
           {feito && (
-            <div
-              style={{ ...aviso, background: "#F0FDF4", borderColor: "#BBF7D0", color: "#166534" }}
-            >
+            <p style={{ ...ok, margin: "12px 0 0" }}>
               <Check size={13} style={{ verticalAlign: -2 }} /> {feito}
-            </div>
+            </p>
           )}
 
-          <CargaDoTime carga={carga} profiles={profiles} />
-
-          {/* Ações em lote */}
-          <div style={barra}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#0F172A", whiteSpace: "nowrap" }}>
-              {selecionados.length
-                ? `${selecionados.length} marcado${selecionados.length > 1 ? "s" : ""}`
-                : "Marque os cards abaixo"}
-            </span>
-            <button
-              onClick={() => setMarcados(new Set(lista.map((c) => c.itemId)))}
-              style={botaoMini}
-            >
-              Marcar todos ({lista.length})
-            </button>
-            {selecionados.length > 0 && (
-              <button onClick={() => setMarcados(new Set())} style={botaoMini}>
-                Limpar
-              </button>
+          <div
+            style={{
+              marginTop: 14,
+              border: "1px solid #E2E8F0",
+              borderRadius: 10,
+              overflow: "hidden",
+            }}
+          >
+            {!grupos.length && (
+              <p style={{ padding: 16, fontSize: 13, color: "#64748B", margin: 0 }}>
+                Nada neste filtro.
+              </p>
             )}
-
-            <div style={{ flex: 1 }} />
-
-            {aba === "semPrazo" ? (
-              <>
-                <CalendarClock size={14} color="#64748B" />
-                <input
-                  value={prazo}
-                  onChange={(e) => setPrazo(e.target.value)}
-                  placeholder="DD/MM/AAAA"
-                  style={{ ...campo, width: 120 }}
-                />
-                <button
-                  disabled={!selecionados.length || !/^\d{2}\/\d{2}\/\d{4}$/.test(prazo)}
-                  onClick={() => aplicar({ tipo: "prazo", prazo }, `com prazo para ${prazo}`)}
-                  style={
-                    selecionados.length && /^\d{2}\/\d{2}\/\d{4}$/.test(prazo)
-                      ? botaoPrincipal
-                      : { ...botaoPrincipal, ...desligado }
-                  }
-                >
-                  Definir prazo
-                </button>
-              </>
-            ) : (
-              <>
-                <UserPlus size={14} color="#64748B" />
-                <select
-                  disabled={!selecionados.length}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    if (!id) return;
-                    const nome = profiles.find((x) => x.id === id)?.display_name || "";
-                    aplicar(
-                      { tipo: "responsaveis", ids: [id], modo: "substituir" },
-                      `com ${nome} como responsável`,
-                    );
-                    e.target.value = "";
-                  }}
-                  style={{ ...campo, minWidth: 190 }}
-                  defaultValue=""
-                >
-                  <option value="">Atribuir a...</option>
-                  {profiles
-                    .filter((x) => x.id !== escritorio)
-                    .map((x) => {
-                      const c = carga.find((y) => y.id === x.id);
-                      return (
-                        <option key={x.id} value={x.id}>
-                          {x.display_name}
-                          {c ? ` — já tem ${c.ativos}` : " — sem nenhum"}
-                        </option>
-                      );
-                    })}
-                </select>
-                {currentUser && (
-                  <button
-                    disabled={!selecionados.length}
-                    onClick={() =>
-                      aplicar(
-                        { tipo: "responsaveis", ids: [currentUser.id], modo: "substituir" },
-                        "para você",
-                      )
-                    }
-                    style={
-                      selecionados.length ? botaoPrincipal : { ...botaoPrincipal, ...desligado }
-                    }
-                  >
-                    Assumir
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
-            {lista.length === 0 && (
-              <div
-                style={{
-                  ...aviso,
-                  background: "#F0FDF4",
-                  borderColor: "#BBF7D0",
-                  color: "#166534",
-                }}
-              >
-                Nada aqui. Esta lista está resolvida.
-              </div>
-            )}
-            {lista.map((c) => (
-              <Linha
-                key={c.itemId}
-                card={c}
-                marcado={marcados.has(c.itemId)}
-                onMarcar={() => alternar(c.itemId)}
-                onAbrir={() => abrirCard(c)}
+            {grupos.map((g) => (
+              <LinhaDoGrupo
+                key={g.chave || "_sem"}
+                g={g}
+                agrupar={agrupar}
+                aberto={abertos.has(g.chave)}
+                onAlternar={() => alternar(g.chave)}
+                escritorio={escritorio}
+                ativasDaPessoa={carga.find((c) => c.id === g.chave)?.ativos}
+                opcoesPessoas={opcoesPessoas}
+                euId={eu?.id}
                 profiles={profiles}
+                onAtribuir={atribuir}
+                onPrazo={darPrazo}
+                onAbrir={abrirCard}
               />
             ))}
           </div>
@@ -259,284 +209,322 @@ export default function Triagem({ data, setData, abrirCard }: Props) {
   );
 }
 
-function CargaDoTime({
-  carga,
+function LinhaDoGrupo({
+  g,
+  agrupar,
+  aberto,
+  onAlternar,
+  escritorio,
+  ativasDaPessoa,
+  opcoesPessoas,
+  euId,
   profiles,
-}: {
-  carga: { id: string; ativos: number }[];
-  profiles: Profile[];
-}) {
-  if (!carga.length) return null;
-  const maior = carga[0].ativos || 1;
-  return (
-    <div
-      style={{
-        background: "#F8FAFC",
-        border: "1px solid #E2E8F0",
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 12,
-      }}
-    >
-      <p style={{ fontSize: 11, fontWeight: 800, color: "#0F172A", marginBottom: 8 }}>
-        Quem já está com o quê{" "}
-        <span style={{ fontWeight: 400, color: "#64748B" }}>
-          — para distribuir sabendo, não no escuro
-        </span>
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {carga.map((c) => {
-          const perfil = profiles.find((x) => x.id === c.id);
-          return (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "#475569", minWidth: 150 }}>
-                {perfil?.display_name || "(quem saiu)"}
-              </span>
-              <div
-                style={{
-                  flex: 1,
-                  height: 8,
-                  background: "#E2E8F0",
-                  borderRadius: 4,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${Math.round((c.ativos / maior) * 100)}%`,
-                    height: "100%",
-                    background: colorFor(c.id),
-                  }}
-                />
-              </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#0F172A",
-                  minWidth: 24,
-                  textAlign: "right",
-                }}
-              >
-                {c.ativos}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Linha({
-  card,
-  marcado,
-  onMarcar,
+  onAtribuir,
+  onPrazo,
   onAbrir,
-  profiles,
 }: {
-  card: FlatCard;
-  marcado: boolean;
-  onMarcar: () => void;
-  onAbrir: () => void;
+  g: Grupo<FlatCard>;
+  agrupar: Agrupar;
+  aberto: boolean;
+  onAlternar: () => void;
+  escritorio: string;
+  ativasDaPessoa?: number;
+  opcoesPessoas: React.ReactNode;
+  euId?: string;
   profiles: Profile[];
+  onAtribuir: (cards: FlatCard[], id: string) => void;
+  onPrazo: (cards: FlatCard[], iso: string) => void;
+  onAbrir: (c: FlatCard) => void;
 }) {
-  const area = areaById(card.areaId);
+  // As ações do cabeçalho só mexem no que falta: dar dono não tira o dono de
+  // quem já tem, e o prazo só vai para quem não tem.
+  const semDono = g.cards.filter((c) => problemasDo(c, escritorio).semDono);
+  const semPrazo = g.cards.filter((c) => problemasDo(c, escritorio).semPrazo);
+  const ehPessoa = agrupar === "responsavel" && g.chave !== SEM_RESPONSAVEL;
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        background: marcado ? "#F0FDFA" : "#fff",
-        border: `1px solid ${marcado ? "#99F6E4" : "#E2E8F0"}`,
-        borderLeft: `3px solid ${MODULO_COLOR[moduloOf(card.areaId)] || "#CBD5E1"}`,
-        borderRadius: 10,
-        padding: "8px 11px",
-      }}
-    >
-      <input type="checkbox" checked={marcado} onChange={onMarcar} />
-      <button
-        onClick={onAbrir}
+    <div style={{ borderTop: "1px solid #F1F5F9" }}>
+      <div
         style={{
-          flex: 1,
-          textAlign: "left",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          padding: 0,
-          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+          background: "#fff",
         }}
       >
-        <div
+        <button
+          onClick={onAlternar}
           style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: "#0F172A",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            ...semEstilo,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flex: 1,
+            minWidth: 0,
           }}
         >
-          {card.itemNome}
-        </div>
-        <div style={{ fontSize: 10.5, color: "#64748B" }}>
-          {card.clienteNome} · {area?.name || card.modulo}
-        </div>
-      </button>
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: corDoEstado(card.etapa || card.kanbanStatus),
-          whiteSpace: "nowrap",
-        }}
-      >
-        {card.etapa || card.kanbanStatus}
-      </span>
-      <div style={{ display: "flex", gap: 3 }}>
-        {(card.responsaveis || []).map((id) => {
-          const perfil = profiles.find((x) => x.id === id);
-          return (
-            <span
-              key={id}
-              title={perfil?.display_name || id}
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: colorFor(id),
-                color: "#fff",
-                fontSize: 8.5,
-                fontWeight: 800,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {initials(perfil?.display_name || "?")}
+          {aberto ? (
+            <ChevronDown size={15} color="#64748B" />
+          ) : (
+            <ChevronRight size={15} color="#64748B" />
+          )}
+          {ehPessoa && <Avatar id={g.chave} nome={g.nome} />}
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#0F172A",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {g.nome}
+          </span>
+          {agrupar === "cliente" && (
+            <span style={{ fontSize: 11, color: "#94A3B8", whiteSpace: "nowrap" }}>
+              {g.areas.map((a) => areaById(a)?.modulo || a).join(" · ")}
             </span>
-          );
-        })}
+          )}
+          {ehPessoa && ativasDaPessoa !== undefined && (
+            <span style={{ fontSize: 11, color: "#94A3B8", whiteSpace: "nowrap" }}>
+              {ativasDaPessoa} ativas no total
+            </span>
+          )}
+        </button>
+        {semDono.length > 0 && (
+          <Contador cor="#B91C1C" fundo="#FEF2F2" texto={`${semDono.length} sem responsável`} />
+        )}
+        {semPrazo.length > 0 && (
+          <Contador cor="#B45309" fundo="#FFFBEB" texto={`${semPrazo.length} sem prazo`} />
+        )}
+
+        {semDono.length > 0 && (
+          <select
+            value=""
+            onChange={(e) => e.target.value && onAtribuir(semDono, e.target.value)}
+            style={{ ...campo, width: 150 }}
+            title={`Dar responsável às ${semDono.length} sem responsável`}
+          >
+            <option value="">Atribuir {semDono.length} a…</option>
+            {euId && <option value={euId}>Eu mesmo</option>}
+            {opcoesPessoas}
+          </select>
+        )}
+        {semPrazo.length > 0 && (
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              color: "#64748B",
+              whiteSpace: "nowrap",
+            }}
+            title={`O prazo vai para as ${semPrazo.length} demandas sem prazo deste grupo`}
+          >
+            Prazo p/ {semPrazo.length}
+            <input
+              type="date"
+              value=""
+              onChange={(e) => onPrazo(semPrazo, e.target.value)}
+              aria-label={`Prazo para as ${semPrazo.length} demandas sem prazo`}
+              style={{ ...campo, width: 136 }}
+            />
+          </label>
+        )}
       </div>
-      {!card.prazo && (
-        <AlertTriangle size={12} color="#F59E0B" style={{ flexShrink: 0 }} aria-label="sem prazo" />
-      )}
-      {card.prazo && (
-        <span style={{ fontSize: 10, color: "#64748B", whiteSpace: "nowrap" }}>{card.prazo}</span>
+
+      {aberto && (
+        <div style={{ background: "#F8FAFC", padding: "4px 14px 10px 39px" }}>
+          {g.cards.map((c) => {
+            const prob = problemasDo(c, escritorio);
+            return (
+              <div
+                key={c.itemId}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 0",
+                  borderBottom: "1px solid #EEF2F6",
+                }}
+              >
+                <button
+                  onClick={() => onAbrir(c)}
+                  style={{ ...semEstilo, flex: 1, minWidth: 0, textAlign: "left" }}
+                >
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: "#0F172A",
+                      display: "block",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {c.itemNome}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                    {agrupar === "responsavel" ? `${c.clienteNome} · ` : ""}
+                    {areaById(c.areaId)?.modulo || c.modulo} · {c.etapa || c.kanbanStatus}
+                  </span>
+                </button>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {c.responsaveis
+                    .filter((id) => id !== escritorio)
+                    .map((id) => (
+                      <Avatar
+                        key={id}
+                        id={id}
+                        nome={profiles.find((x) => x.id === id)?.display_name || "?"}
+                      />
+                    ))}
+                </div>
+                {prob.semDono ? (
+                  <select
+                    value=""
+                    onChange={(e) => e.target.value && onAtribuir([c], e.target.value)}
+                    style={{ ...campo, width: 130 }}
+                  >
+                    <option value="">Atribuir a…</option>
+                    {euId && <option value={euId}>Eu mesmo</option>}
+                    {profiles
+                      .filter((x) => x.id !== escritorio)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.display_name}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <span style={{ width: 130 }} />
+                )}
+                {prob.semPrazo ? (
+                  <input
+                    type="date"
+                    value=""
+                    onChange={(e) => onPrazo([c], e.target.value)}
+                    aria-label={`Prazo de ${c.itemNome}`}
+                    title="Prazo desta demanda"
+                    style={{ ...campo, width: 130 }}
+                  />
+                ) : (
+                  <span style={{ width: 130, fontSize: 12, color: "#64748B" }}>{c.prazo}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-function Guia({
-  ligada,
-  onClick,
-  n,
-  rotulo,
-  ajuda,
+function Segmento({
+  opcoes,
+  valor,
+  onChange,
 }: {
-  ligada: boolean;
-  onClick: () => void;
-  n: number;
-  rotulo: string;
-  ajuda: string;
+  opcoes: [string, string][];
+  valor: string;
+  onChange: (v: string) => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      title={ajuda}
+    <div
       style={{
-        background: ligada ? "#0F172A" : "#fff",
-        color: ligada ? "#fff" : "#475569",
-        border: `1px solid ${ligada ? "#0F172A" : "#E2E8F0"}`,
-        borderRadius: 10,
-        padding: "8px 13px",
-        fontSize: 12,
-        fontWeight: 700,
-        cursor: "pointer",
-        fontFamily: "inherit",
         display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
+        border: "1px solid #E2E8F0",
+        borderRadius: 8,
+        overflow: "hidden",
       }}
     >
-      {rotulo}
-      <span
-        style={{
-          background: ligada ? "#1E293B" : "#F1F5F9",
-          borderRadius: 20,
-          padding: "1px 7px",
-          fontSize: 11,
-          fontWeight: 800,
-        }}
-      >
-        {n}
-      </span>
-    </button>
+      {opcoes.map(([v, rotulo], i) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            ...semEstilo,
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+            background: valor === v ? "#0F172A" : "#fff",
+            color: valor === v ? "#fff" : "#475569",
+            borderLeft: i ? "1px solid #E2E8F0" : "none",
+          }}
+        >
+          {rotulo}
+        </button>
+      ))}
+    </div>
   );
 }
 
-const barra: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-  background: "#fff",
-  border: "1px solid #E2E8F0",
-  borderRadius: 12,
-  padding: "10px 12px",
-  position: "sticky",
-  top: 0,
-  zIndex: 20,
-};
-const aviso: CSSProperties = {
-  background: "#FFFBEB",
-  border: "1px solid #FDE68A",
-  borderRadius: 10,
-  padding: "10px 12px",
-  fontSize: 12,
-  color: "#78350F",
-  lineHeight: 1.6,
-  marginBottom: 12,
+function Contador({ cor, fundo, texto }: { cor: string; fundo: string; texto: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        color: cor,
+        background: fundo,
+        borderRadius: 6,
+        padding: "2px 7px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {texto}
+    </span>
+  );
+}
+
+function Avatar({ id, nome }: { id: string; nome: string }) {
+  return (
+    <span
+      title={nome}
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: "50%",
+        background: colorFor(id),
+        color: "#fff",
+        fontSize: 9,
+        fontWeight: 800,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {initials(nome)}
+    </span>
+  );
+}
+
+const semEstilo: CSSProperties = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  padding: 0,
 };
 const campo: CSSProperties = {
   background: "#fff",
   border: "1px solid #E2E8F0",
-  borderRadius: 8,
-  padding: "6px 9px",
+  borderRadius: 7,
+  padding: "5px 8px",
   fontSize: 12,
   color: "#0F172A",
   fontFamily: "inherit",
   outline: "none",
 };
-const botaoPrincipal: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  background: "#0DD3C5",
-  border: "none",
-  borderRadius: 9,
-  padding: "7px 13px",
-  color: "#fff",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-const desligado: CSSProperties = { background: "#CBD5E1", cursor: "not-allowed" };
-const botaoMini: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 5,
-  background: "#F8FAFC",
-  border: "1px solid #E2E8F0",
+const ok: CSSProperties = {
+  background: "#F0FDF4",
+  border: "1px solid #BBF7D0",
   borderRadius: 8,
-  padding: "6px 10px",
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#475569",
-  cursor: "pointer",
-  fontFamily: "inherit",
+  padding: "8px 12px",
+  fontSize: 12,
+  color: "#166534",
 };
